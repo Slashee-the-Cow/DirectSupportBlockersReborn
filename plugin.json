@@ -1,0 +1,10 @@
+{
+    "name": "Direct Support Blockers Reborn",
+    "author": "Slashee the Cow",
+    "version": "1.0.0",
+    "description": "Easy creation of customised support blockers so you don't have to deal with Cura's \"one tiny box at a time\" rule.",
+    "i18n-catalog": "directsupportblockers",
+    "minimum_cura_version": "5.0",
+    "api": 8,
+    "supported_sdk_versions": ["8.0.0"]
+}
