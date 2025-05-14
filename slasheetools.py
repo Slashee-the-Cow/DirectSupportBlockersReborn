@@ -32,7 +32,7 @@
 #
 #------------
 # v1: log() and log_debug() implementations including "dd" for debug that should show up anyway.
-# v2: Added to_mesh_data() from Cura's built in AMFReader plugin and to_trimesh by fieldOfView
+# v2: Added to_mesh_data() from Cura's built in AMFReader plugin (by fieldOfView I think) and to_trimesh by fieldOfView
 
 import math
 
