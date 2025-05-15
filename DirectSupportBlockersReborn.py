@@ -58,7 +58,7 @@ class DirectSupportBlockersReborn(Tool):
 
         self._catalog = i18nCatalog("directsupportblockers")
 
-        self.setExposedProperties("InputsValid", "BlockerType", "BlockerToPlate", "BoxWidth", "BoxDepth", "BoxHeight")
+        self.setExposedProperties("InputsValid", "BlockerType", "BlockerToPlate", "BoxWidth", "BoxDepth", "BoxHeight", "PyramidTopWidth", "PyramidTopDepth", "PyramidBottomWidth", "PyramidBottomDepth", "PyramidHeight", "LineWidth", "LineHeight")
 
         # Note: if the selection is cleared with this tool active, there is no way to switch to
         # another tool than to reselect an object (by clicking it) because the tool buttons in the
@@ -96,17 +96,22 @@ class DirectSupportBlockersReborn(Tool):
         self._pyramid_bottom_depth: float = 20
         self._pyramid_height: float = 20
 
+        self._line_width: float = 10
+        self._line_height: float = 20
+
         self._preferences = self._application.getPreferences()
         self._preferences.addPreference("directsupportblockers/blocker_to_plate", False)
         self._preferences.addPreference("directsupportblockers/blocker_type", self.BLOCKER_TYPE_BOX)
         self._preferences.addPreference("directsupportblockers/box_width", 10)
-        self._preferences.addPreference("directsupportblockers/box_depth", 10)
-        self._preferences.addPreference("directsupportblockers/box_height", 10)
-        self._preferences.addPreference("directsupportblockers/pyramid_top_width", 10)
-        self._preferences.addPreference("directsupportblockers/pyramid_top_depth", 10)
+        self._preferences.addPreference("directsupportblockers/box_depth", 15)
+        self._preferences.addPreference("directsupportblockers/box_height", 20)
+        self._preferences.addPreference("directsupportblockers/pyramid_top_width", 5)
+        self._preferences.addPreference("directsupportblockers/pyramid_top_depth", 5)
         self._preferences.addPreference("directsupportblockers/pyramid_bottom_width", 20)
         self._preferences.addPreference("directsupportblockers/pyramid_bottom_depth", 20)
         self._preferences.addPreference("directsupportblockers/pyramid_height", 20)
+        self._preferences.addPreference("directsupportblockers/line_width", 10)
+        self._preferences.addPreference("directsupportblockers/line_height", 20)
         
 
         self._blocker_to_plate = bool(self._preferences.getValue("directsupportblockers/blocker_to_plate"))
@@ -114,11 +119,13 @@ class DirectSupportBlockersReborn(Tool):
         self._box_width = float(self._preferences.getValue("directsupportblockers/box_width"))
         self._box_depth = float(self._preferences.getValue("directsupportblockers/box_depth"))
         self._box_height = float(self._preferences.getValue("directsupportblockers/box_height"))
-        self._pyramid_top_width = float(self._preferences.getValue("directsupportblockers/pyramid_width"))
-        self._pyramid_top_depth = float(self._preferences.getValue("directsupportblockers/pyramid_depth"))
-        self._pyramid_botom_width = float(self._preferences.getValue("directsupportblockers/pyramid_width"))
-        self._pyramid_bottom_depth = float(self._preferences.getValue("directsupportblockers/pyramid_depth"))
+        self._pyramid_top_width = float(self._preferences.getValue("directsupportblockers/pyramid_top_width"))
+        self._pyramid_top_depth = float(self._preferences.getValue("directsupportblockers/pyramid_top_depth"))
+        self._pyramid_bottom_width = float(self._preferences.getValue("directsupportblockers/pyramid_bottom_width"))
+        self._pyramid_bottom_depth = float(self._preferences.getValue("directsupportblockers/pyramid_bottom_depth"))
         self._pyramid_height = float(self._preferences.getValue("directsupportblockers/pyramid_height"))
+        self._line_width = float(self._preferences.getValue("directsupportblockers/line_width"))
+        self._line_height = float(self._preferences.getValue("directsupportblockers/line_height"))
 
     def event(self, event):
         super().event(event)
@@ -129,7 +136,6 @@ class DirectSupportBlockersReborn(Tool):
                 # The selection was previously cleared, do not add/remove an support mesh but
                 # use this click for selection and reactivating this tool only.
                 self._skip_press = False
-                self._support_heights=0
                 return
 
             if self._selection_pass is None:
@@ -165,7 +171,6 @@ class DirectSupportBlockersReborn(Tool):
                 elif self._line_points == 2:
                     self._line_second_point = picking_pass.getPickedPosition(event.x, event.y)
                     #self._createBlocker(picked_node, self._line_first_point, self._line_second_point)
-                    self._line_points = 0
             # Add the support blocker at the picked location
             self._createBlocker(picked_node, picked_position, self._line_first_point)
 
@@ -178,7 +183,16 @@ class DirectSupportBlockersReborn(Tool):
         node.setName("SupportBlocker")
         node.setSelectable(True)
         node.setCalculateBoundingBox(True)
-        mesh = self._createCube([self._box_width, self._box_depth, self._box_height if not self._blocker_to_plate else self._click_height])
+        mesh = MeshBuilder()
+        match self._blocker_type:
+            case self.BLOCKER_TYPE_BOX:
+                mesh = self._create_box(self._box_width, self._box_depth, self._box_height)
+            case self.BLOCKER_TYPE_PYRAMID:
+                mesh = self._create_truncated_pyramid((self._pyramid_top_width, self._pyramid_top_depth), (self._pyramid_bottom_width, self._pyramid_bottom_depth), self._pyramid_height if not self._blocker_to_plate else self._click_height)
+            case self.BLOCKER_TYPE_LINE:
+                #TODO: Implement this
+                pass
+        #mesh = self._createCube([self._box_width, self._box_depth, self._box_height if not self._blocker_to_plate else self._click_height])
         #mesh = self._createTube(5,12,15)
         node.setMeshData(mesh.build())
         node.calculateBoundingBoxMesh()
@@ -257,7 +271,7 @@ class DirectSupportBlockersReborn(Tool):
         self._had_selection = has_selection
 
     def _trimesh_to_meshbuilder(self, trimesh_model: trimesh.base.Trimesh,
-            rotation_angle: float = 90, rotation_direction: list[float] = [1,0,0]) -> MeshBuilder:
+            rotation_angle: float = 90, rotation_direction: list[float] | tuple[float] = (1,0,0)) -> MeshBuilder:
         """Converts a Trimesh object to a MeshBuilder in a really ugly way so we get per-vertex normals."""
         trimesh_model.apply_transform(trimesh.transformations.rotation_matrix(math.radians(rotation_angle), rotation_direction))
 
@@ -284,29 +298,29 @@ class DirectSupportBlockersReborn(Tool):
 
         return mesh
 
-    def _createCube(self, size: list[float]) -> MeshBuilder:
-        return self._trimesh_to_meshbuilder(trimesh.creation.box(extents = [size[0], size[1], size[2]]))
-
     def _create_box(self, width: float, depth: float, height: float) -> MeshBuilder:
         if self._blocker_to_plate:
             height = self._click_height
         return self._trimesh_to_meshbuilder(trimesh.creation.box(extents = [width, height, depth]))
 
-    def _truncated_pyramid(self, base_dims, top_dims, height):
+    def _create_truncated_pyramid(self, top_dims, base_dims, height):
         """
         Creates a truncated square or rectangular pyramid.
 
         Args:
-            base_dims: A tuple or list of [width, depth] for the base.
             top_dims: A tuple or list of [width, depth] for the top.
+            base_dims: A tuple or list of [width, depth] for the base.
             height: The height of the pyramid.
 
         Returns:
             A trimesh.Trimesh object representing the truncated pyramid.
         """
 
-        bw, bd = base_dims[0] / 2, base_dims[1] / 2
         tw, td = top_dims[0] / 2, top_dims[1] / 2
+        bw, bd = base_dims[0] / 2, base_dims[1] / 2
+        
+        if self._blocker_to_plate:
+            height = self._click_height
 
         # Define the vertices (bottom then top)
         vertices = np.array([
@@ -325,9 +339,6 @@ class DirectSupportBlockersReborn(Tool):
         ]
 
         return trimesh.Trimesh(vertices=vertices, faces=faces)
-
-    def _createTube(self, radius_inner: float, radius_outer: float, height: float) -> MeshBuilder:
-        return self._trimesh_to_meshbuilder(trimesh.creation.annulus(r_min = radius_inner, r_max = radius_outer, height = height))
 
     def getBlockerToPlate(self) -> bool:
         return self._blocker_to_plate
@@ -431,3 +442,21 @@ class DirectSupportBlockersReborn(Tool):
         if new_value is not None:
             self._pyramid_height = new_value
             self._preferences.setValue("directsupportblockers/pyramid_height", self._pyramid_height)
+
+    def getLineWidth(self) -> float:
+        return self._line_width
+
+    def setLineWidth(self, value: str):
+        new_value = validate_float(value)
+        if new_value is not None:
+            self._line_width = new_value
+            self._preferences.setValue("directsupportblockers/line_width", self._line_width)
+
+    def getLineHeight(self) -> float:
+        return self._line_height
+
+    def setLineHeight(self, value: str):
+        new_value = validate_float(value)
+        if new_value is not None:
+            self._line_height = new_value
+            self._preferences.setValue("directsupportblockers/line_height", self._line_height)

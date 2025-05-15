@@ -122,6 +122,7 @@ Item {
                 setProperty("BlockerToPlate", true)
             } else {
                 setProperty("BoxHeight", parseFloat(boxHeight))
+                setProperty("BlockerToPlate", false)
             }
             inputsValid = true
             setProperty("InputsValid", inputsValid)
@@ -133,6 +134,99 @@ Item {
         boxWidthTextField.background.color = getBackgroundColour(box_width_valid)
         boxDepthTextField.background.color = getBackgroundColour(box_depth_valid)
         boxHeightTextField.background.color = getBackgroundColour(box_height_valid)
+    }
+
+    function validateInputsPyramid(){
+        let message = "";
+        let pyramid_top_width_valid = true;
+        let pyramid_top_depth_valid = true;
+        let pyramid_bottom_width_valid = true;
+        let pyramid_bottom_depth_valid = true;
+        let pyramid_height_valid = true;
+
+        if (!validateFloat(pyramidTopWidth, 0.1)){
+            pyramid_top_width_valid = false;
+            message += catalog.i18nc("@error:pyramid_top_width_invalid", "Pyramid top width must be at least 0.1mm.\n");
+        }
+
+        if (!validateFloat(pyramidTopDepth, 0.1)){
+            pyramid_top_depth_valid = false;
+            message += catalog.i18nc("@error:pyramid_top_depth_invalid", "Pyramid top depth must be at least 0.1mm.\n");
+        }
+
+        if (!validateFloat(pyramidBottomWidth, 0.1)){
+            pyramid_bottom_width_valid = false;
+            message += catalog.i18nc("@error:pyramid_bottom_width_invalid", "Pyramid bottom width must be at least 0.1mm.\n");
+        }
+
+        if (!validateFloat(pyramidBottomDepth, 0.1)){
+            pyramid_bottom_depth_valid = false;
+            message += catalog.i18nc("@error:pyramid_bottom_depth_invalid", "Pyramid bottom depth must be at least 0.1mm.\n");
+        }
+
+        if (!blockerToPlate && !validateFloat(pyramidHeight, 0.1)){
+            pyramid_height_valid = false;
+            message += catalog.i18nc("@error:pyramid_height_invalid", "Pyramid height must be at least 0.1mm if \"Blocker to plate\" is disabled.\n");
+        }
+
+        if (pyramid_top_width_valid && pyramid_top_depth_valid && pyramid_bottom_width_valid && pyramid_bottom_depth_valid && (blockerToPlate || pyramid_height_valid)){
+            setProperty("PyramidTopWidth", parseFloat(pyramidTopWidth))
+            setProperty("PyramidTopLength", parseFloat(pyramidTopDepth))
+            setProperty("PyramidBottomWidth", parseFloat(pyramidBottomWidth))
+            setProperty("PyramidBottomLength", parseFloat(pyramidBottomDepth))
+            if (blockerToPlate){
+                setProperty("BlockerToPlate", true)
+            } else {
+                setProperty("PyramidHeight", parseFloat(pyramidHeight))
+                setProperty("BlockerToPlate", false)
+            }
+            inputsValid = true
+            setProperty("InputsValid", inputsValid)
+        } else {
+            inputsValid = false
+            setProperty("InputsValid", inputsValid)
+        }
+        errorMessage = message
+        pyramidTopWidthTextField.background.color = getBackgroundColour(pyramid_top_width_valid)
+        pyramidTopDepthTextField.background.color = getBackgroundColour(pyramid_top_depth_valid)
+        pyramidBottomWidthTextField.background.color = getBackgroundColour(pyramid_bottom_width_valid)
+        pyramidBottomDepthTextField.background.color = getBackgroundColour(pyramid_bottom_depth_valid)
+        pyramidHeightTextField.background.color = getBackgroundColour(pyramid_height_valid)
+    }
+
+        function validateInputsLine(){
+        let message = "";
+        let line_width_valid = true;
+        let line_height_valid = true;
+
+        if (!validateFloat(lineWidth, 0.1)){
+            line_width_valid = false;
+            message += catalog.i18nc("@error:line_width_invalid", "Line width must be at least 0.1mm.\n");
+        }
+
+        if (!blockerToPlate && !validateFloat(lineHeight, 0.1)){
+            line_height_valid = false;
+            message += catalog.i18nc("@error:line_height_invalid", "Line height must be at least 0.1mm if \"Blocker to plate\" is disabled.\n");
+        }
+
+        if (line_width_valid && (blockerToPlate || line_height_valid)){
+            setProperty("LineWidth", parseFloat(lineWidth))
+            if (blockerToPlate){
+                setProperty("BlockerToPlate", true)
+            } else {
+                setProperty("LineHeight", parseFloat(lineHeight))
+                setProperty("BlockerToPlate", false)
+            }
+            inputsValid = true
+            setProperty("InputsValid", inputsValid)
+        } else {
+            inputsValid = false
+            setProperty("InputsValid", inputsValid)
+        }
+        errorMessage = message
+        lineWidthTextField.background.color = getBackgroundColour(line_width_valid)
+        lineDepthTextField.background.color = getBackgroundColour(line_depth_valid)
+        lineHeightTextField.background.color = getBackgroundColour(line_height_valid)
     }
 
     width: childrenRect.width
@@ -148,12 +242,38 @@ Item {
     property string errorMessage: ""
 
     property string currentBlockerType: boxBlockerType
-    property bool blockerToPlate: False
+    property bool blockerToPlate: false
 
     property string boxWidth: ""
     property string boxDepth: ""
     property string boxHeight: ""
 
+    property string pyramidTopWidth: ""
+    property string pyramidTopDepth: ""
+    property string pyramidBottomWidth: ""
+    property string pyramidBottomDepth: ""
+    property string pyramidHeight: ""
+
+    property string lineWidth: ""
+    property string lineHeight: ""
+
+    function updateProperties(){
+        currentBlockerType = getProperty("BlockerType")
+        blockerToPlate = getProperty("BlockerToPlate")
+
+        boxWidth = getProperty("BoxWidth")
+        boxDepth = getProperty("BoxDepth")
+        boxHeight = getProperty("BoxHeight")
+
+        pyramidTopWidth = getProperty("PyramidTopWidth")
+        pyramidTopDepth = getProperty("PyramidTopDepth")
+        pyramidBottomWidth = getProperty("PyramidBottomWidth")
+        pyramidBottomDepth = getProperty("PyramidBottomDepth")
+        pyramidHeight = getProperty("PyramidHeight")
+
+        lineWidth = getProperty("LineWidth")
+        lineHeight = getProperty("LineHeight")
+    }
 
     function updateBlockerButtonState(type = null){
         if (type === null){
@@ -184,12 +304,32 @@ Item {
                 break;
             case customBlockerType:
                 settingsStackLayout.currentIndex = 3;
-                Qt.callLAter(validateInputsCustom)
                 break;
         }
     }
 
+    function validateCurrentBlocker(){
+        switch(currentBlockerType){
+            case boxBlockerType:
+                validateInputsBox();
+                break;
+            case pyramidBlockerType:
+                validateInputsPyramid();
+                break;
+            case lineBlockerType:
+                validateInputsLine();
+                break;
+        }
+    }
+
+    Component.onCompleted: {
+        updateProperties()
+        Qt.callLater(validateCurrentBlocker)
+        setBlockerType(currentBlockerType)
+    }
+
     property int textFieldMinWidth: 75
+    property int labelMinWidth: 100
 
     ColumnLayout {
         id: mainColumn
@@ -219,7 +359,7 @@ Item {
 
             UM.ToolbarButton {
                 id: pyramidButton
-                text: catalog.i18nc("@label", "Square/rectangular pyramid support blocker")
+                text: catalog.i18nc("@label", "Square / rectangular pyramid support blocker")
                 toolItem: UM.ColorImage {
                     source: Qt.resolvedUrl("truncated_square_pyramid.svg")
                     color: UM.Theme.getColor("icon")
@@ -260,6 +400,7 @@ Item {
         StackLayout{
             id: settingsStackLayout
             Layout.fillWidth: true
+            implicitHeight: layout ? layout.height : 0
             currentIndex: 0
 
             GridLayout {
@@ -267,7 +408,8 @@ Item {
                 columns: 2
                 
                 UM.Label{
-                    text: catalog.i18nc("@controls:box_width", "Box Width")
+                    text: catalog.i18nc("@controls:box", "Box Width")
+                    Layout.minimumWidth: labelMinWidth
                 }
                 UM.TextFieldWithUnit{
                     id: boxWidthTextField
@@ -286,10 +428,11 @@ Item {
                     }
                 }
                 UM.Label{
-                    text: catalog.i18nc("@controls:box_depth", "Box Depth")
+                    text: catalog.i18nc("@controls:box", "Box Depth")
+                    Layout.minimumWidth: labelMinWidth
                 }
                 UM.TextFieldWithUnit{
-                    id: boxDepthhTextField
+                    id: boxDepthTextField
                     Layout.minimumWidth: textFieldMinWidth
                     height: UM.Theme.getSize("setting_control").height
                     unit: "mm"
@@ -305,7 +448,8 @@ Item {
                     }
                 }
                 UM.Label{
-                    text: catalog.i18nc("@controls:box_height", "Box Height")
+                    text: catalog.i18nc("@controls:box", "Box Height")
+                    Layout.minimumWidth: labelMinWidth
                     visible: blockerToPlate != true
                 }
                 UM.TextFieldWithUnit{
@@ -326,6 +470,171 @@ Item {
                     visible: blockerToPlate != true
                 }
             }
+            GridLayout {
+                id: pyramidBlockerControls
+                columns: 2
+                
+                UM.Label{
+                    text: catalog.i18nc("@controls:pyramid", "Pyramid Top Width")
+                    Layout.minimumWidth: labelMinWidth
+                }
+                UM.TextFieldWithUnit{
+                    id: pyramidTopWidthTextField
+                    Layout.minimumWidth: textFieldMinWidth
+                    height: UM.Theme.getSize("setting_control").height
+                    unit: "mm"
+                    text: pyramidTopWidth
+                    validator: DoubleValidator{
+                        decimals: 1
+                        bottom: 0.1
+                        notation: DoubleValidator.StandardNotation
+                    }
+                    onTextChanged: {
+                        pyramidTopWidth = text
+                        Qt.callLater(validateInputsPyramid)
+                    }
+                }
+                UM.Label{
+                    text: catalog.i18nc("@controls:pyramid", "Pyramid Top Depth")
+                    Layout.minimumWidth: labelMinWidth
+                }
+                UM.TextFieldWithUnit{
+                    id: pyramidTopDepthTextField
+                    Layout.minimumWidth: textFieldMinWidth
+                    height: UM.Theme.getSize("setting_control").height
+                    unit: "mm"
+                    text: pyramidTopDepth
+                    validator: DoubleValidator{
+                        decimals: 1
+                        bottom: 0.1
+                        notation: DoubleValidator.StandardNotation
+                    }
+                    onTextChanged: {
+                        pyramidTopDepth = text
+                        Qt.callLater(validateInputsPyramid)
+                    }
+                }
+                UM.Label{
+                    text: catalog.i18nc("@controls:pyramid", "Pyramid Bottom Width")
+                    Layout.minimumWidth: labelMinWidth
+                }
+                UM.TextFieldWithUnit{
+                    id: pyramidBottomWidthTextField
+                    Layout.minimumWidth: textFieldMinWidth
+                    height: UM.Theme.getSize("setting_control").height
+                    unit: "mm"
+                    text: pyramidBottomWidth
+                    validator: DoubleValidator{
+                        decimals: 1
+                        bottom: 0.1
+                        notation: DoubleValidator.StandardNotation
+                    }
+                    onTextChanged: {
+                        pyramidBottomWidth = text
+                        Qt.callLater(validateInputsPyramid)
+                    }
+                }
+                UM.Label{
+                    text: catalog.i18nc("@controls:pyramid", "Pyramid Bottom Depth")
+                    Layout.minimumWidth: labelMinWidth
+                }
+                UM.TextFieldWithUnit{
+                    id: pyramidBottomDepthTextField
+                    Layout.minimumWidth: textFieldMinWidth
+                    height: UM.Theme.getSize("setting_control").height
+                    unit: "mm"
+                    text: pyramidBottomDepth
+                    validator: DoubleValidator{
+                        decimals: 1
+                        bottom: 0.1
+                        notation: DoubleValidator.StandardNotation
+                    }
+                    onTextChanged: {
+                        pyramidBottomDepth = text
+                        Qt.callLater(validateInputsPyramid)
+                    }
+                }
+                UM.Label{
+                    text: catalog.i18nc("@controls:pyramid", "Pyramid Height")
+                    Layout.minimumWidth: labelMinWidth
+                    visible: blockerToPlate != true
+                }
+                UM.TextFieldWithUnit{
+                    id: pyramidHeightTextField
+                    Layout.minimumWidth: textFieldMinWidth
+                    height: UM.Theme.getSize("setting_control").height
+                    unit: "mm"
+                    text: pyramidHeight
+                    validator: DoubleValidator{
+                        decimals: 1
+                        bottom: 0.1
+                        notation: DoubleValidator.StandardNotation
+                    }
+                    onTextChanged: {
+                        pyramidHeight = text
+                        Qt.callLater(validateInputsPyramid)
+                    }
+                    visible: blockerToPlate != true
+                }
+            }
+            GridLayout {
+                id: lineBlockerControls
+                columns: 2
+                
+                UM.Label{
+                    text: catalog.i18nc("@controls:line", "Line Width")
+                    Layout.minimumWidth: labelMinWidth
+                }
+                UM.TextFieldWithUnit{
+                    id: lineWidthTextField
+                    Layout.minimumWidth: textFieldMinWidth
+                    height: UM.Theme.getSize("setting_control").height
+                    unit: "mm"
+                    text: lineWidth
+                    validator: DoubleValidator{
+                        decimals: 1
+                        bottom: 0.1
+                        notation: DoubleValidator.StandardNotation
+                    }
+                    onTextChanged: {
+                        lineWidth = text
+                        Qt.callLater(validateInputsLine)
+                    }
+                }
+                UM.Label{
+                    text: catalog.i18nc("@controls:line", "Line Height")
+                    Layout.minimumWidth: labelMinWidth
+                    visible: blockerToPlate != true
+                }
+                UM.TextFieldWithUnit{
+                    id: lineHeightTextField
+                    Layout.minimumWidth: textFieldMinWidth
+                    height: UM.Theme.getSize("setting_control").height
+                    unit: "mm"
+                    text: lineHeight
+                    validator: DoubleValidator{
+                        decimals: 1
+                        bottom: 0.1
+                        notation: DoubleValidator.StandardNotation
+                    }
+                    onTextChanged: {
+                        lineHeight = text
+                        Qt.callLater(validateInputsLine)
+                    }
+                    visible: blockerToPlate != true
+                }
+            }
+            ColumnLayout{
+                id: customBlockerControls
+                spacing: UM.Theme.getSize("default_margin").height / 2
+                UM.Label{
+                    text: catalog.i18nc("@controls:custom", "Click the button below to turn the currently selected object into a support blocker.")
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: labelMinWidth
+                    Layout.maximumWidth: labelMinWidth + textFieldMinWidth
+                    wrapMode: Text.Wrap
+                }
+            }
         }
         UM.CheckBox {
             id: blockerToPlateCheckBox
@@ -340,7 +649,7 @@ Item {
         UM.Label{
             id: errorDisplay
             Layout.fillWidth: true
-            Layout.maximumWidth: 175
+            Layout.maximumWidth: 220
             visible: errorMessage != ""
             text: errorMessage
             color: UM.Theme.getColor("error")
