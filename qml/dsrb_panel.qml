@@ -225,7 +225,6 @@ Item {
         }
         errorMessage = message
         lineWidthTextField.background.color = getBackgroundColour(line_width_valid)
-        lineDepthTextField.background.color = getBackgroundColour(line_depth_valid)
         lineHeightTextField.background.color = getBackgroundColour(line_height_valid)
     }
 
@@ -400,7 +399,6 @@ Item {
         StackLayout{
             id: settingsStackLayout
             Layout.fillWidth: true
-            implicitHeight: layout ? layout.height : 0
             currentIndex: 0
 
             GridLayout {

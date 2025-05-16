@@ -15,7 +15,7 @@
 # Maybe I just list the things that are different than that which this aims to modernise.
 # v1.0.0:
 #   - Individual values for each dimension when making a box (much easier to work with than replacing a 10mm cube with a custom size cube)
-#   - No cylinder option - I think there's such a thing as a niche use case, then there's cylindrical support blockers.
+#   - No cylinder option - I think there's such a thing as a niche use case, then there's cylindrical support blockers. Ju
 #--------------------------------------------------------------------------------------------------
 
 import math
@@ -162,14 +162,17 @@ class DirectSupportBlockersReborn(Tool):
             picking_pass.render()
 
             picked_position = picking_pass.getPickedPosition(event.x, event.y)
+            #log("d", f"picked_position: {picked_position}")
+            log("d", f"node {picked_node._name} has {picked_node.getMeshData().getVertices()}")
 
             if self._blocker_type == self.BLOCKER_TYPE_LINE:
                 self._line_points += 1
                 if self._line_points == 1:
                     self._line_first_point = picking_pass.getPickedPosition(event.x, event.y)
                     return
-                elif self._line_points == 2:
+                if self._line_points == 2:
                     self._line_second_point = picking_pass.getPickedPosition(event.x, event.y)
+                    self._line_points = 0
                     #self._createBlocker(picked_node, self._line_first_point, self._line_second_point)
             # Add the support blocker at the picked location
             self._createBlocker(picked_node, picked_position, self._line_first_point)
@@ -177,6 +180,7 @@ class DirectSupportBlockersReborn(Tool):
     def _createBlocker(self, parent: CuraSceneNode, position: Vector, position_start: Vector = None):
         if self._blocker_to_plate:
             self._click_height = position.z
+        log("d", f"position: {position}, position_start: {position_start}")
         
         node = CuraSceneNode()
 
@@ -190,8 +194,9 @@ class DirectSupportBlockersReborn(Tool):
             case self.BLOCKER_TYPE_PYRAMID:
                 mesh = self._create_truncated_pyramid((self._pyramid_top_width, self._pyramid_top_depth), (self._pyramid_bottom_width, self._pyramid_bottom_depth), self._pyramid_height if not self._blocker_to_plate else self._click_height)
             case self.BLOCKER_TYPE_LINE:
-                #TODO: Implement this
-                pass
+                mesh = self._create_line_mesh(self._line_width, position_start, position, 0.2, self._blocker_to_plate, self._line_height)
+                #mesh = self._create_line_mesh(position_start, position, self._line_width, self._blocker_to_plate, self._line_height)
+
         #mesh = self._createCube([self._box_width, self._box_depth, self._box_height if not self._blocker_to_plate else self._click_height])
         #mesh = self._createTube(5,12,15)
         node.setMeshData(mesh.build())
@@ -210,23 +215,30 @@ class DirectSupportBlockersReborn(Tool):
         new_instance.resetState()  # Ensure that the state is not seen as a user state.
         settings.addInstance(new_instance)
 
-        z_offset: float = 0.0
+        move_y_nudge: float = 0.98  # When moving stuff down multiply it by this so it still touches the object
+        
+        y_offset: float = 0.0
         if self._blocker_to_plate:
-            z_offset = -(position.z / 2)
+            y_offset = -(position.y / 2)
         else:
             match self._blocker_type:
                 case self.BLOCKER_TYPE_BOX:
-                    z_offset = -(self._box_height / 2)
+                    y_offset = 0
                 case self.BLOCKER_TYPE_PYRAMID:
-                    z_offset = -(self._pyramid_height / 2)
+                    y_offset = -(self._pyramid_height * move_y_nudge)
 
-        position.set(z=position.z + z_offset)
+        log("d", f"y_offset: {y_offset}, position before z_offset: {position}")
+
+        new_position = position.set(y = position.y + y_offset)
+        
 
         op = GroupedOperation()
         # First add node to the scene at the correct position/scale, before parenting, so the eraser mesh does not get scaled with the parent
         op.addOperation(AddSceneNodeOperation(node, self._controller.getScene().getRoot()))
         op.addOperation(SetParentOperation(node, parent))
-        op.addOperation(TranslateOperation(node, position, set_position = True))
+        if self._blocker_type != self.BLOCKER_TYPE_LINE:
+            log("d", f"addings translate operation to new_position {new_position}")
+            op.addOperation(TranslateOperation(node, new_position, set_position = True))
         op.push()
 
         self._application.getController().getScene().sceneChanged.emit(node)
@@ -271,7 +283,7 @@ class DirectSupportBlockersReborn(Tool):
         self._had_selection = has_selection
 
     def _trimesh_to_meshbuilder(self, trimesh_model: trimesh.base.Trimesh,
-            rotation_angle: float = 90, rotation_direction: list[float] | tuple[float] = (1,0,0)) -> MeshBuilder:
+            rotation_angle: float = -90, rotation_direction: list[float] | tuple[float] = (1,0,0)) -> MeshBuilder:
         """Converts a Trimesh object to a MeshBuilder in a really ugly way so we get per-vertex normals."""
         trimesh_model.apply_transform(trimesh.transformations.rotation_matrix(math.radians(rotation_angle), rotation_direction))
 
@@ -298,10 +310,25 @@ class DirectSupportBlockersReborn(Tool):
 
         return mesh
 
+    def verts_faces_for_duplicate_meshbuilder(self, verts: np.array, faces: np.array):
+
+        vertices = []
+        indices = []
+        
+        vert_count = 0
+        for face in faces:
+            indices.append([vert_count, vert_count + 1, vert_count + 2])
+            vert_count += 3
+
+            for vertex_index in face:
+                vertices.append(verts[vertex_index])
+        return np.asarray(vertices, dtype=np.float32), np.asarray(indices, dtype=np.int32)
+
+
     def _create_box(self, width: float, depth: float, height: float) -> MeshBuilder:
         if self._blocker_to_plate:
             height = self._click_height
-        return self._trimesh_to_meshbuilder(trimesh.creation.box(extents = [width, height, depth]))
+        return self._trimesh_to_meshbuilder(trimesh.creation.box(extents = [width, height, depth]), 0)
 
     def _create_truncated_pyramid(self, top_dims, base_dims, height):
         """
@@ -338,8 +365,223 @@ class DirectSupportBlockersReborn(Tool):
             [0, 1, 2], [0, 2, 3]   # Bottom
         ]
 
-        return trimesh.Trimesh(vertices=vertices, faces=faces)
+        return self._trimesh_to_meshbuilder(trimesh.Trimesh(vertices=vertices, faces=faces), -90)
 
+    def _create_line_mesh(self, width, pos1: Vector , pos2: Vector, extra_height, blocker_to_plate: bool, fixed_height: float):
+        mesh = MeshBuilder()
+        half_width = width / 2
+        log("d", f"pos1: {pos1}, type {type(pos1)}, pos2: {pos2}, type {type(pos2)}")
+
+        line_vector = pos2 - pos1
+        vector_top = Vector(0, extra_height, 0)
+        vector_bottom_1 = Vector(0, -pos1.y if blocker_to_plate else -fixed_height, 0)
+        vector_bottom_2 = Vector(0, -pos2.y if blocker_to_plate else -fixed_height, 0)
+
+        # Width direction perpendicular to the line (in Y-up space)
+        norm_vector = Vector.cross(line_vector, Vector(0, 1, 0)).normalized()
+        width_offset_vector = norm_vector * half_width
+
+        # Define corner vectors
+        p1_t_right = (pos1 + vector_top + width_offset_vector).getData()
+        p1_t_left = (pos1 + vector_top - width_offset_vector).getData()
+        p2_t_right = (pos2 + vector_top + width_offset_vector).getData()
+        p2_t_left = (pos2 + vector_top - width_offset_vector).getData()
+        p1_b_right = (pos1 + vector_bottom_1 + width_offset_vector).getData()
+        p1_b_left = (pos1 + vector_bottom_1 - width_offset_vector).getData()
+        p2_b_right = (pos2 + vector_bottom_2 + width_offset_vector).getData()
+        p2_b_left = (pos2 + vector_bottom_2 - width_offset_vector).getData()
+
+        vertex_count = 24
+
+        verts = [ # 6 faces, 4 corners each, order for consistent normals (Y-up order)
+            p1_t_right, p1_t_left, p2_t_left, p2_t_right, # Top
+            p1_t_right, p2_t_right, p2_b_right, p1_b_right, # Front
+            p1_t_left, p1_t_right, p1_b_right, p1_b_left,   # Right (relative to start)
+            p2_t_right, p2_t_left, p2_b_left, p2_b_right, # Back (relative to start)
+            p1_t_left, p2_t_left, p2_b_left, p1_b_left,   # Left (relative to start)
+            p1_b_right, p1_b_left, p2_b_left, p2_b_right, # Bottom
+        ]
+
+        mesh.setVertices(np.asarray(verts, dtype=np.float32))
+        indices = []
+        for i in range(0, vertex_count, 4): # All 6 quads (12 triangles)
+            indices.append([i, i+2, i+1])
+            indices.append([i, i+3, i+2])
+        mesh.setIndices(np.asarray(indices, dtype=np.int32))
+
+        mesh.calculateNormals()
+        return mesh
+
+    def _create_line_blocker(self, first_point: Vector, second_point: Vector, width: float, height: float = 0, to_plate: bool = False, top_extra: float = 0):
+        point_1 = first_point.getData()
+        point_2 = second_point.getData()
+        vector_direction = point_2 - point_1
+
+        # Calculate width vectors
+        vector_direction_normal = np.linalg.norm(vector_direction)
+
+        width_vector = np.array
+
+        vector_direction_unit = np.array([0,0,0])
+
+        if vector_direction_normal < 1e-6:
+            # If points are very close, default to a line along the X-axis
+            width_vector = np.array([0, width / 2, 0])
+        else:
+            vector_direction_unit = vector_direction / vector_direction_normal
+
+            # Find an arbitrary vector perpendicular to v_dir_unit
+            if abs(vector_direction_unit[0]) > 1e-6:
+                perpendicular = np.array([-vector_direction_unit[1] - vector_direction_unit[2], vector_direction_unit[0], vector_direction_unit[0]], dtype=np.float64)
+            elif abs(vector_direction_unit[1]) > 1e-6:
+                perpendicular = np.array([vector_direction_unit[1], -vector_direction_unit[0] - vector_direction_unit[2], vector_direction_unit[1]], dtype=np.float64)
+            else:  # abs(vector_direction_unit[2]) > 1e-6
+                perpendicular = np.array([vector_direction_unit[2], vector_direction_unit[2], -vector_direction_unit[0] - vector_direction_unit[1]], dtype=np.float64)
+
+            width_vector_unit = perpendicular / np.linalg.norm(perpendicular)
+            width_vector = ((width * 2) * width_vector_unit).astype(np.float64)
+
+        # Figure out vertices
+        bottom_y_start = -point_1[1] if to_plate else -height
+        bottom_y_end = -point_2[1] if to_plate else -height
+
+        top_y_start = top_extra
+        top_y_end = top_extra
+
+        vertices = np.array([
+            point_1 + [width_vector[0], top_y_start, width_vector[2]],   # TL1 (0)
+            point_1 + [-width_vector[0], top_y_start, -width_vector[2]],   # TR1 (1)
+            point_1 + [-width_vector[0], bottom_y_start, -width_vector[2]], # BR1 (2)
+            point_1 + [width_vector[0], bottom_y_start, width_vector[2]], # BL1 (3)
+
+            # Four corners at point2 (representing the end face)
+            point_2 + [width_vector[0], top_y_end, width_vector[2]],      # TL2 (4)
+            point_2 + [-width_vector[0], top_y_end, -width_vector[2]],      # TR2 (5)
+            point_2 + [-width_vector[0], bottom_y_end, -width_vector[2]],    # BR2 (6)
+            point_2 + [width_vector[0], bottom_y_end, width_vector[2]],    # BL2 (7)
+        ], dtype=np.float32)
+
+        faces = np.array([
+            # Start face (at point1)
+            [0, 1, 2],
+            [2, 3, 0],
+            # End face (at point2)
+            [4, 5, 6],
+            [6, 7, 4],
+            # Side face 1
+            [0, 4, 7],
+            [7, 3, 0],
+            # Side face 2
+            [1, 5, 6],
+            [6, 2, 1],
+            # Bottom face
+            [3, 2, 6],
+            [6, 7, 3],
+            # Top face
+            [0, 1, 5],
+            [5, 4, 0],
+        ], dtype=np.uint32)
+
+        mb_verts, mb_indices = self.verts_faces_for_duplicate_meshbuilder(vertices, faces)
+        mesh = MeshBuilder()
+        mesh.setVertices(mb_verts)
+        mesh.setIndices(mb_indices)
+        mesh.calculateNormals()
+
+        return mesh
+
+    """def _create_line_mesh(self, point1: Vector, point2: Vector, width: float, blocker_to_plate: bool, fixed_height: float) -> MeshBuilder:
+        Creates a line mesh for support blockers using MeshBuilder with duplicated vertices.
+
+        width_direction1 = self._line_calculate_width_vectors(point1, point2, width)
+        verts = self._line_calculate_line_vertices(point1, point2, width_direction1, blocker_to_plate, fixed_height)
+        faces = self._line_create_line_faces()
+
+        duplicated_vertices, duplicated_indices = self.verts_faces_for_duplicate_meshbuilder(verts, faces)
+
+        builder = MeshBuilder()
+        builder.setVertices(duplicated_vertices.tolist())
+        builder.setIndices(np.asarray(duplicated_indices).tolist())
+        builder.calculateNormals()
+
+        return builder
+        
+    def _line_calculate_width_vectors(self, point1: Vector, point2: Vector, width: float) -> np.ndarray:
+        p1_data = point1.getData()
+        p2_data = point2.getData()
+        v_dir = p2_data - p1_data
+        v_dir_norm = np.linalg.norm(v_dir)
+
+        if v_dir_norm < 1e-6:
+            return np.array([width / 2, 0, 0], dtype=np.float64)  # Default if points are too close
+
+        v_dir_unit = v_dir / v_dir_norm
+
+        # Find an arbitrary vector perpendicular to v_dir_unit
+        if abs(v_dir_unit[0]) > 1e-6:
+            perp1 = np.array([-v_dir_unit[1] - v_dir_unit[2], v_dir_unit[0], v_dir_unit[0]], dtype=np.float64)
+        elif abs(v_dir_unit[1]) > 1e-6:
+            perp1 = np.array([v_dir_unit[1], -v_dir_unit[0] - v_dir_unit[2], v_dir_unit[1]], dtype=np.float64)
+        else:  # abs(v_dir_unit[2]) > 1e-6
+            perp1 = np.array([v_dir_unit[2], v_dir_unit[2], -v_dir_unit[0] - v_dir_unit[1]], dtype=np.float64)
+
+        perp1_unit = perp1 / np.linalg.norm(perp1)
+        width_direction1 = (width / 2) * perp1_unit
+
+        return width_direction1.astype(np.float32)
+
+    def _line_calculate_line_vertices(self, point1: Vector, point2: Vector, width_direction1: np.ndarray, blocker_to_plate: bool, fixed_height: float) -> np.ndarray:
+        p1 = point1.getData()
+        p2 = point2.getData()
+
+        # Determine Y-levels (Cura's vertical) for bottom
+        bottom_y_start = -p1[1] if blocker_to_plate else -fixed_height
+        bottom_y_end = -p2[1] if blocker_to_plate else -fixed_height
+
+        # Top Y-levels (Cura's vertical) (click Y)
+        top_y_start = 0.0
+        top_y_end = 0.0
+
+        vertices = np.array([
+            # Four corners at point1 (representing the start face)
+            p1 + [width_direction1[0], top_y_start, width_direction1[2]],   # TL1 (0)
+            p1 + [-width_direction1[0], top_y_start, -width_direction1[2]],   # TR1 (1)
+            p1 + [-width_direction1[0], bottom_y_start, -width_direction1[2]], # BR1 (2)
+            p1 + [width_direction1[0], bottom_y_start, width_direction1[2]], # BL1 (3)
+
+            # Four corners at point2 (representing the end face)
+            p2 + [width_direction1[0], top_y_end, width_direction1[2]],      # TL2 (4)
+            p2 + [-width_direction1[0], top_y_end, -width_direction1[2]],      # TR2 (5)
+            p2 + [-width_direction1[0], bottom_y_end, -width_direction1[2]],    # BR2 (6)
+            p2 + [width_direction1[0], bottom_y_end, width_direction1[2]],    # BL2 (7)
+        ], dtype=np.float32)
+
+        return vertices
+
+    def _line_create_line_faces(self) -> np.ndarray:
+        faces = np.array([
+            # Start face (at point1)
+            [0, 1, 2],
+            [2, 3, 0],
+            # End face (at point2)
+            [4, 5, 6],
+            [6, 7, 4],
+            # Side face 1
+            [0, 4, 7],
+            [7, 3, 0],
+            # Side face 2
+            [1, 5, 6],
+            [6, 2, 1],
+            # Bottom face
+            [3, 2, 6],
+            [6, 7, 3],
+            # Top face
+            [0, 1, 5],
+            [5, 4, 0],
+        ], dtype=np.uint32)
+        return faces"""
+        
+            
     def getBlockerToPlate(self) -> bool:
         return self._blocker_to_plate
 
