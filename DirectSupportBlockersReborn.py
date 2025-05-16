@@ -5,6 +5,7 @@
 #
 # Some large parts taken wholesale from Cura by UltiMaker available under the LGPLv3
 # https://github.com/Ultimaker/Cura
+# Some small parts taken piecemeal from fieldOfView and 5axes
 #--------------------------------------------------------------------------------------------------
 # The name is actually a bit of a misnomer, this is to fill the void left
 # by "Custom Support Eraser Plus" by 5axes but is not based on it.
@@ -14,8 +15,9 @@
 # Does one really do a changelog for the first version?
 # Maybe I just list the things that are different than that which this aims to modernise.
 # v1.0.0:
+#   - "Custom" setting can convert any model into a support blocker (most meshes won't work as support blockers).
 #   - Individual values for each dimension when making a box (much easier to work with than replacing a 10mm cube with a custom size cube)
-#   - No cylinder option - I think there's such a thing as a niche use case, then there's cylindrical support blockers. Ju
+#   - No cylinder option - I think there's such a thing as a niche use case, then there's cylindrical support blockers. Just use the shiny new feature that turns anything into a blocker!
 #--------------------------------------------------------------------------------------------------
 
 import math
@@ -35,6 +37,7 @@ from cura.Scene.BuildPlateDecorator import BuildPlateDecorator
 from UM.Event import Event, MouseEvent
 from UM.Math.Vector import Vector
 from UM.Mesh.MeshBuilder import MeshBuilder
+from UM.Mesh.MeshData import MeshData
 from UM.Operations.AddSceneNodeOperation import AddSceneNodeOperation
 from UM.Operations.GroupedOperation import GroupedOperation
 from UM.Operations.RemoveSceneNodeOperation import RemoveSceneNodeOperation
@@ -105,8 +108,8 @@ class DirectSupportBlockersReborn(Tool):
         self._preferences.addPreference("directsupportblockers/box_width", 10)
         self._preferences.addPreference("directsupportblockers/box_depth", 15)
         self._preferences.addPreference("directsupportblockers/box_height", 20)
-        self._preferences.addPreference("directsupportblockers/pyramid_top_width", 5)
-        self._preferences.addPreference("directsupportblockers/pyramid_top_depth", 5)
+        self._preferences.addPreference("directsupportblockers/pyramid_top_width", 10)
+        self._preferences.addPreference("directsupportblockers/pyramid_top_depth", 10)
         self._preferences.addPreference("directsupportblockers/pyramid_bottom_width", 20)
         self._preferences.addPreference("directsupportblockers/pyramid_bottom_depth", 20)
         self._preferences.addPreference("directsupportblockers/pyramid_height", 20)
@@ -145,6 +148,7 @@ class DirectSupportBlockersReborn(Tool):
             if not picked_node:
                 # There is no slicable object at the picked location
                 return
+            
 
             node_stack = picked_node.callDecoration("getStack")
             if node_stack:
@@ -163,7 +167,7 @@ class DirectSupportBlockersReborn(Tool):
 
             picked_position = picking_pass.getPickedPosition(event.x, event.y)
             #log("d", f"picked_position: {picked_position}")
-            log("d", f"node {picked_node._name} has {picked_node.getMeshData().getVertices()}")
+            log("d", f"node {picked_node.getName()} has {picked_node.getMeshData().getVertices()}")
 
             if self._blocker_type == self.BLOCKER_TYPE_LINE:
                 self._line_points += 1
@@ -179,7 +183,7 @@ class DirectSupportBlockersReborn(Tool):
 
     def _createBlocker(self, parent: CuraSceneNode, position: Vector, position_start: Vector = None):
         if self._blocker_to_plate:
-            self._click_height = position.z
+            self._click_height = position.y
         log("d", f"position: {position}, position_start: {position_start}")
         
         node = CuraSceneNode()
@@ -225,7 +229,7 @@ class DirectSupportBlockersReborn(Tool):
                 case self.BLOCKER_TYPE_BOX:
                     y_offset = 0
                 case self.BLOCKER_TYPE_PYRAMID:
-                    y_offset = -(self._pyramid_height * move_y_nudge)
+                    y_offset = -((self._pyramid_height / 2 ) * move_y_nudge)
 
         log("d", f"y_offset: {y_offset}, position before z_offset: {position}")
 
@@ -242,6 +246,36 @@ class DirectSupportBlockersReborn(Tool):
         op.push()
 
         self._application.getController().getScene().sceneChanged.emit(node)
+
+    def convert_sceneNode_to_blocker(self):
+        node = Selection.getSelectedObject(0)
+        if not node:  # Nothing selected?
+            return
+        node_mesh = node.getMeshData()
+        if not node_mesh:  # Selection doesn't have a mesh - you manage to pick a camera or something?
+            return
+        log("d", f"node_mesh = {node_mesh}\nvertices = {node_mesh.getVertices()}")
+        node_blocker_mesh = self._meshdata_to_duplicate_meshbuilder(node_mesh).build()
+        log("d", f"node_blocker_mesh = {node_blocker_mesh}\nvertices = {node_blocker_mesh.getVertices()}")
+        node.setMeshData(node_blocker_mesh)
+        node.calculateBoundingBoxMesh()
+
+        # Apply decorator to make it a blocker
+        stack = node.callDecoration("getStack") # created by SettingOverrideDecorator that is automatically added to CuraSceneNode
+        settings = stack.getTop()
+        # Well first un-apply other mesh types
+        for property_key in ["infill_mesh", "cutting_mesh", "support_mesh"]:
+            if settings.getInstance(property_key):
+                settings.removeInstance(property_key)
+
+        definition = stack.getSettingDefinition("anti_overhang_mesh")
+        new_instance = SettingInstance(definition, settings)
+        new_instance.setProperty("value", True)
+        new_instance.resetState()  # Ensure that the state is not seen as a user state.
+        settings.addInstance(new_instance)
+
+        self._application.getController().getScene().sceneChanged.emit(node)
+
 
     def _removeBlocker(self, node: CuraSceneNode):
         parent = node.getParent()
@@ -310,8 +344,7 @@ class DirectSupportBlockersReborn(Tool):
 
         return mesh
 
-    def verts_faces_for_duplicate_meshbuilder(self, verts: np.array, faces: np.array):
-
+    def _verts_faces_for_duplicate_meshbuilder(self, verts: np.array, faces: np.array):
         vertices = []
         indices = []
         
@@ -323,6 +356,39 @@ class DirectSupportBlockersReborn(Tool):
             for vertex_index in face:
                 vertices.append(verts[vertex_index])
         return np.asarray(vertices, dtype=np.float32), np.asarray(indices, dtype=np.int32)
+
+    def _meshdata_to_duplicate_meshbuilder(self, meshdata: MeshData):
+        input_verts = meshdata.getVertices()
+        input_indices = meshdata.getIndices()
+        log("d", f"_meshdata_to_duplicate_meshbuilder: input_verts = {input_verts}\ninput_indices = {input_indices}")
+
+        mesh = MeshBuilder()
+        shaped_indices = []
+        
+        if input_indices is None:
+        # Handle the case where there are no explicit indices
+            shaped_indices = np.arange(meshdata.getVertexCount()).reshape(-1, 3)
+        else:
+            # Check the dimensionality of the indices array
+            if input_indices.ndim == 1:
+                # Reshape 1D array into 2D (assuming 3 indices per face)
+                shaped_indices = input_indices.reshape(-1, 3)
+            elif input_indices.ndim == 2:
+                # I like it when they come prearranged
+                shaped_indices = input_indices
+            elif input_indices.ndim > 2:
+                # We don't like quantum objects around here.
+                log("e", f"Unexpected index array dimensionality while converting MeshData to MeshBuilder: {input_indices.ndim}")
+                return mesh  # Return an empty MeshBuilder which will probably make stuff fail silently
+        log("d", f"_meshdata_to_duplicate_meshbuilder: shaped_indices = {shaped_indices}")
+
+        vertices, indices = self._verts_faces_for_duplicate_meshbuilder(input_verts, shaped_indices)
+        log("d", f"_meshdata_to_duplicate_meshbuilder: vertices = {vertices}")
+        mesh.setVertices(vertices)
+        mesh.setIndices(indices)
+        mesh.calculateNormals()
+
+        return mesh
 
 
     def _create_box(self, width: float, depth: float, height: float) -> MeshBuilder:
@@ -349,10 +415,11 @@ class DirectSupportBlockersReborn(Tool):
         if self._blocker_to_plate:
             height = self._click_height
 
+        half_height = height / 2
         # Define the vertices (bottom then top)
         vertices = np.array([
-            [-bw, -bd, 0], [bw, -bd, 0], [bw, bd, 0], [-bw, bd, 0],  # Bottom
-            [-tw, -td, height], [tw, -td, height], [tw, td, height], [-tw, td, height]   # Top
+            [-bw, -bd, -half_height], [bw, -bd, -half_height], [bw, bd, -half_height], [-bw, bd, -half_height],  # Bottom
+            [-tw, -td, half_height], [tw, -td, half_height], [tw, td, half_height], [-tw, td, half_height]   # Top
         ])
 
         # Define the faces (triangles for each side, then top and bottom)
@@ -482,7 +549,7 @@ class DirectSupportBlockersReborn(Tool):
             [5, 4, 0],
         ], dtype=np.uint32)
 
-        mb_verts, mb_indices = self.verts_faces_for_duplicate_meshbuilder(vertices, faces)
+        mb_verts, mb_indices = self._verts_faces_for_duplicate_meshbuilder(vertices, faces)
         mesh = MeshBuilder()
         mesh.setVertices(mb_verts)
         mesh.setIndices(mb_indices)

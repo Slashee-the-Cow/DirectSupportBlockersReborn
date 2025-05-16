@@ -139,12 +139,12 @@ def to_mesh_data(tri_node: trimesh.base.Trimesh, file_name: str = "",
     return mesh_data
 
 def to_trimesh(mesh_data: MeshData) -> trimesh.base.Trimesh:
-        if not mesh_data:
-            return trimesh.base.Trimesh()
+    if not mesh_data:
+        return trimesh.base.Trimesh()
 
-        indices = mesh_data.getIndices()
-        if indices is None:
-            # some file formats (eg 3mf) don't supply indices, but have unique vertices per face
-            indices = np.arange(mesh_data.getVertexCount()).reshape(-1, 3)
+    indices = mesh_data.getIndices()
+    if indices is None:
+        # some file formats (eg 3mf) don't supply indices, but have unique vertices per face
+        indices = np.arange(mesh_data.getVertexCount()).reshape(-1, 3)
 
-        return trimesh.base.Trimesh(vertices=mesh_data.getVertices(), faces=indices)
+    return trimesh.base.Trimesh(vertices=mesh_data.getVertices(), faces=indices)

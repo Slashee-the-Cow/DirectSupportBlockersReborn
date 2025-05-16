@@ -3,7 +3,7 @@ import QtQuick.Controls 6.0
 import QtQuick.Layouts 6.0
 
 import UM 1.6 as UM
-//import Cura 1.1 as Cura
+import Cura 1.1 as Cura
 
 Item {
 
@@ -471,6 +471,12 @@ Item {
             GridLayout {
                 id: pyramidBlockerControls
                 columns: 2
+
+                UM.Label{
+                    Layout.columnSpan: 2
+                    Layout.preferredWidth: 220
+                    text: catalog.i18nc("@info:pyramid", "<b>Note:</b> With normal supports, supports will only be blocked on the part of the pyramid intersecting with the object.<br>Tree supports will avoid the whole pyramid.")
+                }
                 
                 UM.Label{
                     text: catalog.i18nc("@controls:pyramid", "Pyramid Top Width")
@@ -632,7 +638,34 @@ Item {
                     Layout.maximumWidth: labelMinWidth + textFieldMinWidth
                     wrapMode: Text.Wrap
                 }
+
+                UM.Label{
+                    text: catalog.i18nc("@controls:custom", "<b>Once you've made the blocker, you have to move the blocker so that it intersects the model which needs the blocker.</b>")
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: labelMinWidth
+                    Layout.maximumWidth: labelMinWidth + textFieldMinWidth
+                    wrapMode: Text.Wrap
+                }
+
+                Cura.SecondaryButton{
+                    id: makeCustomBlockerButton
+                    Layout.preferredHeight: UM.Theme.getSize("setting_control").height
+                    Layout.alignment: Qt.AlignHCenter
+                    text: catalog.i18nc("@controls:custom", "Convert to blocker")
+                    onClicked: triggerAction("convert_sceneNode_to_blocker")
+                }
+
+                UM.Label {
+                    text: catalog.i18nc("@controls:custom", "<b>Note:</b> This will mess with the model geometry so that it might not slice as well if you turn it back into a regular model.<br>It is recommended you create a copy of your object as a backup if that is the case.")
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: labelMinWidth
+                    Layout.maximumWidth: labelMinWidth + textFieldMinWidth
+                    wrapMode: Text.Wrap
+                }
             }
+
+            //Layout.preferredWidth: children.length > 0 ? children[currentIndex].implicitWidth : 0
+            Layout.preferredHeight: children.length > 0 ? children[currentIndex].implicitHeight : 0
         }
         UM.CheckBox {
             id: blockerToPlateCheckBox
