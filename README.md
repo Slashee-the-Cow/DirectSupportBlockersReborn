@@ -21,13 +21,17 @@ Click two points on your model and it will draw a line of support blocker betwee
 
 #### 🎆 **Custom** 🎆
 **Turn any model you have in Cura into a support blocker!** Works super if you need thing really specific. (Which is sort of the point.) One thing I've done is if I have a model which is partially hollow, make a solid version of that and prevent any support generating inside.
-- **Remember** you'll need to move your custom blocker to intersect with the surface of the model that needs blocking.
+- **Remember you'll need to move your custom blocker to intersect with the surface of the model that needs blocking.**
 - This changes the model geometry in a way that might result in it not slicing as well if you turn it back into a regular model. If you think you might do that, please make a copy of your original.
-- Making custom blockers from complex models is CPU intensive and may make Cura appear to freeze for a few seconds.
+- Converting very complex models into support blockers may make Cura appear to freeze (from a few seconds to several minutes in my "worst case scenario" tests) - please let it finish and Cura will start responding again.
 - Cura's support generation may appear to ignore thin lines, that's because it can expand into those areas.  
 
 
 All built in support types support being a fixed height or going down to the build plate.
+
+---
+### Get in touch!
+Having any problems? Want to request a feature? Hear a good joke? Come say hi at the [GitHub repo](https://github.com/Slashee-the-Cow/DirectSupportBlockersReborn)!
 
 ---
 ### Known Issues

@@ -16,7 +16,7 @@
 # Does one really do a changelog for the first version?
 # Maybe I just list the things that are different than that which this hopes to supplant.
 # v1.0.0:
-#   - "Custom" setting can convert any model into a support blocker (most meshes won't work as support blockers).
+#   - "Custom" setting can convert any model into a support blocker (most meshes won't work as support blockers out of the box).
 #   - Individual values for each dimension when making a box (much easier to work with than replacing a 10mm cube with a custom size cube).
 #   - Square/rectangular pyramid: regular support will only avoid the part intersecting your model, but tree support will go around it entirely.
 #   - No cylinder option - I think there's such a thing as a niche use case, then there's cylindrical support blockers. Just use the shiny new feature that turns anything into a blocker!
@@ -53,7 +53,7 @@ from UM.Settings.SettingInstance import SettingInstance
 from UM.Tool import Tool
 from UM.i18n import i18nCatalog
 
-from .slasheetools import log_debug as log, validate_int, validate_float
+from .slasheetools import log as log, validate_float
 
 class DirectSupportBlockersReborn(Tool):
 
@@ -451,8 +451,8 @@ class DirectSupportBlockersReborn(Tool):
         vector_bottom_2 = Vector(0, -pos2.y if blocker_to_plate else -fixed_height, 0)
 
         # Width direction perpendicular to the line (in Y-up space)
-        norm_vector = Vector.cross(line_vector, Vector(0, 1, 0)).normalized()
-        width_offset_vector = norm_vector * half_width
+        offset_norm_vector = Vector.cross(line_vector, Vector(0, 1, 0)).normalized()
+        width_offset_vector = offset_norm_vector * half_width
 
         # Define corner vectors
         p1_t_right = (pos1 + vector_top + width_offset_vector).getData()
