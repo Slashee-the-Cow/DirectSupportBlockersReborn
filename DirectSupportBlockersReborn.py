@@ -11,19 +11,20 @@
 # by "Custom Support Eraser Plus" by 5axes but it's not based on it.
 #
 # It's a branding thing. People expect "Reborn" from my 5axes continuations/replacements.
-# I would have called it "Custom Support Blockers Reborn" but that could get confused with "Custom Supports Reborn"
+# I would have called it "Custom Support Blockers Reborn" but that could get confused with "Custom Supports Reborn".
 #--------------------------------------------------------------------------------------------------
+# v1.0.0:
 # Does one really do a changelog for the first version?
 # Maybe I just list the things that are different than that which this hopes to supplant.
-# v1.0.0:
-#   - "Custom" setting can convert any model into a support blocker (most meshes won't work as support blockers out of the box).
-#   - Individual values for each dimension when making a box (much easier to work with than replacing a 10mm cube with a custom size cube).
-#   - Square/rectangular pyramid: regular support will only avoid the part intersecting your model, but tree support will go around it entirely.
-#   - No cylinder option - I think there's such a thing as a niche use case, then there's cylindrical support blockers. Just use the shiny new feature that turns anything into a blocker!
-#   - All built in support types support being a fixed height or going down to the build plate.
-#   - Flashy new iconography. Pretty hard to confuse with the built in support blocker and possibly my first successful artworks of isometric 3D objects.
-#   - Control panel now has responsive layout. And input validation.
-#   - More flexible backend allows for - in theory - easy addition of more features down the line.
+#   - "Custom" setting can convert any model into a support blocker (most meshes won't work as support blockers out of the box). And yet I've taken the word "custom" out of the name.
+#   - Individual values for each dimension when making a box (much easier to work with than replacing a 10mm cube with a custom size cube). Also the other built in shapes.
+#   - Square/rectangular pyramid: regular support will only avoid the part intersecting your model, but tree support will go around it entirely. Don't tell Greenpeace.
+#   - No cylinder option - AFAIK there's such a thing as a niche use case, then there's cylindrical support blockers. If you miss them just use the shiny new feature that turns anything into a blocker + Calibration Shapes Reborn! (shameless plug)
+#       - If I've grossly underestimated the number of people who want cylindrical supports, come by the GitHub repo and let me know - github.com/Slashee-the-Cow/DirectSupportBlockersReborn
+#   - All built in support types support being a fixed height or going down to the build plate (not sure how useful that is unless you're stacking things five high, but why not).
+#   - Flashy new iconography. Pretty hard to confuse with the built in support blocker tool, the shapes actually look like what they make and possibly my first successful artworks of isometric 3D objects.
+#   - Control panel has responsive layout. And input validation. And inputs for all axes of a shape rather than a single magic "size".
+#   - More flexible backend allows for - in theory - easy addition of more features down the line. "In practice" may depend on receiving feature requests to test this thought.
 #--------------------------------------------------------------------------------------------------
 
 import math
@@ -41,6 +42,7 @@ from cura.Scene.SliceableObjectDecorator import SliceableObjectDecorator
 from cura.Scene.BuildPlateDecorator import BuildPlateDecorator
 
 from UM.Event import Event, MouseEvent
+from UM.Math.AxisAlignedBox import AxisAlignedBox
 from UM.Math.Vector import Vector
 from UM.Mesh.MeshBuilder import MeshBuilder
 from UM.Mesh.MeshData import MeshData
@@ -49,6 +51,7 @@ from UM.Operations.GroupedOperation import GroupedOperation
 from UM.Operations.RemoveSceneNodeOperation import RemoveSceneNodeOperation
 from UM.Operations.TranslateOperation import TranslateOperation
 from UM.Scene.Selection import Selection
+from UM.Scene.SceneNodeSettings import SceneNodeSettings
 from UM.Settings.SettingInstance import SettingInstance
 from UM.Tool import Tool
 from UM.i18n import i18nCatalog
@@ -107,6 +110,7 @@ class DirectSupportBlockersReborn(Tool):
 
         self._line_width: float = 10
         self._line_height: float = 20
+        self._minimum_line_length: float = 1
 
         self._preferences = self._application.getPreferences()
         self._preferences.addPreference("directsupportblockers/blocker_to_plate", False)
@@ -182,6 +186,11 @@ class DirectSupportBlockersReborn(Tool):
                     return
                 if self._line_points == 2:
                     self._line_second_point = picking_pass.getPickedPosition(event.x, event.y)
+                    if (self._line_second_point - self._line_first_point).length() < self._minimum_line_length:
+                        # Line is too short; ignore click
+                        self._line_points = 1
+                        self._line_second_point = None
+                        return
                     self._line_points = 0
                     #self._createBlocker(picked_node, self._line_first_point, self._line_second_point)
             # Add the support blocker at the picked location
@@ -207,10 +216,10 @@ class DirectSupportBlockersReborn(Tool):
                 mesh = self._create_line_mesh(self._line_width, position_start, position, 0.2, self._blocker_to_plate, self._line_height)
                 #mesh = self._create_line_mesh(position_start, position, self._line_width, self._blocker_to_plate, self._line_height)
 
-        #mesh = self._createCube([self._box_width, self._box_depth, self._box_height if not self._blocker_to_plate else self._click_height])
-        #mesh = self._createTube(5,12,15)
         node.setMeshData(mesh.build())
         node.calculateBoundingBoxMesh()
+
+        #node.setSetting(SceneNodeSettings.AutoDropDown, False)
 
         active_build_plate = CuraApplication.getInstance().getMultiBuildPlateModel().activeBuildPlate
         node.addDecorator(BuildPlateDecorator(active_build_plate))
@@ -228,27 +237,46 @@ class DirectSupportBlockersReborn(Tool):
         move_y_nudge: float = 0.98  # When moving stuff down multiply it by this so it still touches the object
         
         y_offset: float = 0.0
+        line_y_translate: float = 0.0  # Lines are special because their position is baked into the mesh
         if self._blocker_to_plate:
             y_offset = -((position.y / 2) * move_y_nudge)
         else:
             match self._blocker_type:
                 case self.BLOCKER_TYPE_BOX:
-                    y_offset = 0
+                    if position.y - (self._box_height / 2) < 0:
+                        y_offset = -position.y + (self._box_height / 2) # Move the bottom to y=0
+                    else:
+                        y_offset = 0
                 case self.BLOCKER_TYPE_PYRAMID:
-                    y_offset = -((self._pyramid_height / 2 ) * move_y_nudge)
+                    if position.y - (self._pyramid_height) < 0:
+                        y_offset = -position.y + (self._pyramid_height / 2) # Move the bottom to y=0
+                    else:
+                        y_offset = -((self._pyramid_height / 2 ) * move_y_nudge)
+                case self.BLOCKER_TYPE_LINE:
+                    log("d", f"line node position = {node.getPosition()}, line node world position = {node.getWorldPosition()}, line node bounding box = {node.getBoundingBox()}")
+                    line_aabb: AxisAlignedBox = node.getBoundingBox()
+                    if line_aabb.bottom < 0:
+                        # They need to be moved up
+                        line_y_translate = -line_aabb.bottom
 
-        log("d", f"y_offset: {y_offset}, position before z_offset: {position}")
+        log("d", f"y_offset: {y_offset}, position before y_offset: {position}, line_y_translate: {line_y_translate}")
 
         new_position = position.set(y = position.y + y_offset)
-        
 
         op = GroupedOperation()
         # First add node to the scene at the correct position/scale, before parenting, so the eraser mesh does not get scaled with the parent
         op.addOperation(AddSceneNodeOperation(node, self._controller.getScene().getRoot()))
         op.addOperation(SetParentOperation(node, parent))
         if self._blocker_type != self.BLOCKER_TYPE_LINE:
-            log("d", f"addings translate operation to new_position {new_position}")
+            log("d", f"adding translate operation to new_position {new_position}")
             op.addOperation(TranslateOperation(node, new_position, set_position = True))
+        else:
+            log("d", f"adding translate operation to line_y_translate {line_y_translate}")
+            op.addOperation(TranslateOperation(node, Vector(0, line_y_translate, 0)))
+
+        #else:
+        #    log("d", f"adding line translate operation to absolute_y_value {absolute_y_value}")
+        #    op.addOperation(TranslateOperation(node, node.getPosition().set(y = (absolute_y_value / 2)), set_position = True))
         op.push()
 
         self._application.getController().getScene().sceneChanged.emit(node)
@@ -564,7 +592,7 @@ class DirectSupportBlockersReborn(Tool):
     def getPyramidBottomWidth(self) -> float:
         return self._pyramid_bottom_width
 
-    def setPyramidWidth(self, value: str):
+    def setPyramidBottomWidth(self, value: str):
         new_value = validate_float(value)
         if new_value is not None:
             self._pyramid_bottom_width = new_value

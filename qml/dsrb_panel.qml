@@ -117,7 +117,7 @@ Item {
 
         if (box_width_valid && box_depth_valid && (blockerToPlate || box_height_valid)){
             setProperty("BoxWidth", parseFloat(boxWidth))
-            setProperty("BoxLength", parseFloat(boxDepth))
+            setProperty("BoxDepth", parseFloat(boxDepth))
             if (blockerToPlate){
                 setProperty("BlockerToPlate", true)
             } else {
@@ -171,9 +171,9 @@ Item {
 
         if (pyramid_top_width_valid && pyramid_top_depth_valid && pyramid_bottom_width_valid && pyramid_bottom_depth_valid && (blockerToPlate || pyramid_height_valid)){
             setProperty("PyramidTopWidth", parseFloat(pyramidTopWidth))
-            setProperty("PyramidTopLength", parseFloat(pyramidTopDepth))
+            setProperty("PyramidTopDepth", parseFloat(pyramidTopDepth))
             setProperty("PyramidBottomWidth", parseFloat(pyramidBottomWidth))
-            setProperty("PyramidBottomLength", parseFloat(pyramidBottomDepth))
+            setProperty("PyramidBottomDepth", parseFloat(pyramidBottomDepth))
             if (blockerToPlate){
                 setProperty("BlockerToPlate", true)
             } else {
