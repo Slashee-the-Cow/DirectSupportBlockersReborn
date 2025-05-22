@@ -650,8 +650,9 @@ Item {
                 Cura.SecondaryButton{
                     id: makeCustomBlockerButton
                     Layout.preferredHeight: UM.Theme.getSize("setting_control").height
+                    Layout.minimumWidth: 150
                     Layout.alignment: Qt.AlignHCenter
-                    text: catalog.i18nc("@controls:custom", "Convert to blocker")
+                    text: getProperty("ConvertButtonText")
                     onClicked: triggerAction("convert_sceneNode_to_blocker")
                 }
 
