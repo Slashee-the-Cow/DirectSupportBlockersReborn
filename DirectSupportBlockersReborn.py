@@ -13,6 +13,8 @@
 # It's a branding thing. People expect "Reborn" from my 5axes continuations/replacements.
 # I would have called it "Custom Support Blockers Reborn" but that could get confused with "Custom Supports Reborn".
 #--------------------------------------------------------------------------------------------------
+# v1.0.1:
+#   - Converting a regular mesh to a blocker now uses a Job so it doesn't lock the UI thread. Apparently it's bad when it does that. Not sure why. My "worst case scenario" test only took seven minutes to convert.
 # v1.0.0:
 # Does one really do a changelog for the first version?
 # Maybe I just list the things that are different than that which this hopes to supplant.
@@ -42,6 +44,7 @@ from cura.Scene.SliceableObjectDecorator import SliceableObjectDecorator
 from cura.Scene.BuildPlateDecorator import BuildPlateDecorator
 
 from UM.Event import Event, MouseEvent
+from UM.Job import Job
 from UM.Math.AxisAlignedBox import AxisAlignedBox
 from UM.Math.Vector import Vector
 from UM.Mesh.MeshBuilder import MeshBuilder
@@ -51,12 +54,13 @@ from UM.Operations.GroupedOperation import GroupedOperation
 from UM.Operations.RemoveSceneNodeOperation import RemoveSceneNodeOperation
 from UM.Operations.TranslateOperation import TranslateOperation
 from UM.Scene.Selection import Selection
-from UM.Scene.SceneNodeSettings import SceneNodeSettings
 from UM.Settings.SettingInstance import SettingInstance
 from UM.Tool import Tool
 from UM.i18n import i18nCatalog
 
 from .slasheetools import log as log, validate_float
+
+catalog = i18nCatalog("directsupportblockers")
 
 class DirectSupportBlockersReborn(Tool):
 
@@ -70,7 +74,7 @@ class DirectSupportBlockersReborn(Tool):
 
         self._catalog = i18nCatalog("directsupportblockers")
 
-        self.setExposedProperties("InputsValid", "BlockerType", "BlockerToPlate", "BoxWidth", "BoxDepth", "BoxHeight", "PyramidTopWidth", "PyramidTopDepth", "PyramidBottomWidth", "PyramidBottomDepth", "PyramidHeight", "LineWidth", "LineHeight")
+        self.setExposedProperties("InputsValid", "BlockerType", "BlockerToPlate", "BoxWidth", "BoxDepth", "BoxHeight", "PyramidTopWidth", "PyramidTopDepth", "PyramidBottomWidth", "PyramidBottomDepth", "PyramidHeight", "LineWidth", "LineHeight", "ConvertButtonText")
 
         # Note: if the selection is cleared with this tool active, there is no way to switch to
         # another tool than to reselect an object (by clicking it) because the tool buttons in the
@@ -79,6 +83,8 @@ class DirectSupportBlockersReborn(Tool):
         Selection.selectionChanged.connect(self._onSelectionChanged)
         self._had_selection = False
         self._skip_press = False
+        self._convert_node: CuraSceneNode = None
+        self._convert_job: ConvertMeshDataToBlocker = None
 
         self._selection_pass = None
         self._application = CuraApplication.getInstance()
@@ -139,6 +145,11 @@ class DirectSupportBlockersReborn(Tool):
         self._pyramid_height = float(self._preferences.getValue("directsupportblockers/pyramid_height"))
         self._line_width = float(self._preferences.getValue("directsupportblockers/line_width"))
         self._line_height = float(self._preferences.getValue("directsupportblockers/line_height"))
+
+        self._convert_button_default_text = catalog.i18nc("@controls:custom", "Convert to Blocker")
+        self._convert_button_progress_text = catalog.i18nc("@controls:custom", "Converting")
+        self._convert_button_text = self._convert_button_default_text
+        self._convert_button_max_dots = 5
 
     def event(self, event):
         super().event(event)
@@ -282,6 +293,10 @@ class DirectSupportBlockersReborn(Tool):
         self._application.getController().getScene().sceneChanged.emit(node)
 
     def convert_sceneNode_to_blocker(self):
+        if self._convert_job:
+            if self._convert_job.isRunning():
+                return
+                
         node = Selection.getSelectedObject(0)
         if not node:  # Nothing selected?
             return
@@ -289,9 +304,25 @@ class DirectSupportBlockersReborn(Tool):
         if not node_mesh:  # Selection doesn't have a mesh - you manage to pick a camera or something?
             return
         log("d", f"node_mesh = {node_mesh}\nvertices = {node_mesh.getVertices()}")
-        node_blocker_mesh = self._meshdata_to_duplicate_meshbuilder(node_mesh).build()
-        log("d", f"node_blocker_mesh = {node_blocker_mesh}\nvertices = {node_blocker_mesh.getVertices()}")
-        node.setMeshData(node_blocker_mesh)
+        self._convert_node = node
+        self._convert_job = ConvertMeshDataToBlocker(node_mesh)
+        self._convert_job.finished.connect(self.convert_mesh_conversion_finished)
+        self._convert_job.progress.connect(self.convert_mesh_progress_update)
+        self.setConvertButtonText(self._convert_button_progress_text)
+        self._convert_job.start()
+        #node_blocker_mesh = self._meshdata_to_duplicate_meshbuilder(node_mesh).build()
+        #log("d", f"node_blocker_mesh = {node_blocker_mesh}\nvertices = {node_blocker_mesh.getVertices()}")
+
+    def convert_mesh_conversion_finished(self, job: Job):
+        self.setConvertButtonText(self._convert_button_default_text)
+        self.propertyChanged.emit()
+        
+        node = self._convert_node
+        if job.hasError():
+            log("e", f"ConvertMeshDataToBlocker failed: {job.getError()}")
+            return
+
+        node.setMeshData(job.getResult())
         node.calculateBoundingBoxMesh()
 
         # Apply decorator to make it a blocker
@@ -310,6 +341,12 @@ class DirectSupportBlockersReborn(Tool):
 
         self._application.getController().getScene().sceneChanged.emit(node)
 
+    def convert_mesh_progress_update(self, job: Job, progress: int):
+        current_dots = self._convert_button_text.count(".")
+        current_dots += 1
+        if current_dots > self._convert_button_max_dots:
+            current_dots = 0
+        self.setConvertButtonText(self._convert_button_progress_text + "." * current_dots)
 
     def _removeBlocker(self, node: CuraSceneNode):
         parent = node.getParent()
@@ -633,3 +670,69 @@ class DirectSupportBlockersReborn(Tool):
         if new_value is not None:
             self._line_height = new_value
             self._preferences.setValue("directsupportblockers/line_height", self._line_height)
+
+    def getConvertButtonText(self) -> str:
+        return self._convert_button_text
+
+    def setConvertButtonText(self, value: str):
+        # I'm using this for convenience in the Python so I don't have to emit the signal everywhere
+        self._convert_button_text = value
+        self.propertyChanged.emit()
+
+class ConvertMeshDataToBlocker(Job):
+
+    def __init__(self, mesh: MeshData):
+        super().__init__()
+        self._mesh = mesh
+
+    def run(self):
+        input_verts = self._mesh.getVertices()
+        input_indices = self._mesh.getIndices()
+        log("d", f"ConvertMeshDataToBlocker: input_verts = {input_verts}\ninput_indices = {input_indices}")
+
+        output_mesh = MeshBuilder()
+        shaped_indices = []
+        
+        if input_indices is None:
+        # Handle the case where there are no explicit indices
+            shaped_indices = np.arange(self._mesh.getVertexCount()).reshape(-1, 3)
+        else:
+            # Check the dimensionality of the indices array
+            if input_indices.ndim == 1:
+                # Reshape 1D array into 2D (assuming 3 indices per face)
+                shaped_indices = input_indices.reshape(-1, 3)
+            elif input_indices.ndim == 2:
+                # I like it when they come prearranged
+                shaped_indices = input_indices
+            elif input_indices.ndim > 2:
+                # We don't like quantum objects around here.
+                log("e", f"Unexpected index array dimensionality while converting MeshData to blocker: {input_indices.ndim}")
+                self.setResult(output_mesh.build())
+                return  # Return an empty MeshBuilder which will probably make stuff fail silently
+        log("d", f"ConvertMeshDataToBlocker: shaped_indices = {shaped_indices}")
+
+        output_vertices = []
+        output_indices = []
+        
+        vert_count = 0
+        for face in shaped_indices:
+            output_indices.append([vert_count, vert_count + 1, vert_count + 2])
+            vert_count += 3
+            if vert_count % 30000 == 0:
+                self.progress.emit(self, 0)
+            for vertex_index in face:
+                output_vertices.append(input_verts[vertex_index])
+
+        vertices = np.asarray(output_vertices, dtype=np.float32)
+        self.progress.emit(self, 0)
+        indices = np.asarray(output_indices, dtype=np.int32)
+        self.progress.emit(self, 0)
+        log("d", f"ConvertMeshDataToBlocker: vertices = {vertices}")
+        output_mesh.setVertices(vertices)
+        self.progress.emit(self, 0)
+        output_mesh.setIndices(indices)
+        self.progress.emit(self, 0)
+        output_mesh.calculateNormals()
+        self.progress.emit(self, 0)
+
+        self.setResult(output_mesh.build())
