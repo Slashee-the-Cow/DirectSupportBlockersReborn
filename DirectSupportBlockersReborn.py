@@ -13,6 +13,9 @@
 # It's a branding thing. People expect "Reborn" from my 5axes continuations/replacements.
 # I would have called it "Custom Support Blockers Reborn" but that could get confused with "Custom Supports Reborn".
 #--------------------------------------------------------------------------------------------------
+# v1.0.2:
+#   - Cylindrical support blockers added. I didn't know who needed them. Apparent edolis!
+#   - Minor refactoring work. Would have been more major, but I got distracted fixing my copy + paste stuffups to get cylinders working.
 # v1.0.1:
 #   - Converting a regular mesh to a blocker now uses a Job so it doesn't lock the UI thread. Apparently it's bad when it does that. Not sure why. My "worst case scenario" test only took seven minutes to convert.
 # v1.0.0:
@@ -65,6 +68,7 @@ catalog = i18nCatalog("directsupportblockers")
 class DirectSupportBlockersReborn(Tool):
 
     BLOCKER_TYPE_BOX: str = "box_blocker_type"
+    BLOCKER_TYPE_CYLINDER: str = "cylinder_blocker_type"
     BLOCKER_TYPE_PYRAMID: str = "pyramid_blocker_type"
     BLOCKER_TYPE_LINE: str = "line_blocker_type"
     BLOCKER_TYPE_CUSTOM: str = "custom_blocker_type"
@@ -74,7 +78,7 @@ class DirectSupportBlockersReborn(Tool):
 
         self._catalog = i18nCatalog("directsupportblockers")
 
-        self.setExposedProperties("InputsValid", "BlockerType", "BlockerToPlate", "BoxWidth", "BoxDepth", "BoxHeight", "PyramidTopWidth", "PyramidTopDepth", "PyramidBottomWidth", "PyramidBottomDepth", "PyramidHeight", "LineWidth", "LineHeight", "ConvertButtonText")
+        self.setExposedProperties("InputsValid", "BlockerType", "BlockerToPlate", "BoxWidth", "BoxDepth", "BoxHeight", "CylinderDiameter", "CylinderHeight", "PyramidTopWidth", "PyramidTopDepth", "PyramidBottomWidth", "PyramidBottomDepth", "PyramidHeight", "LineWidth", "LineHeight", "ConvertButtonText")
 
         # Note: if the selection is cleared with this tool active, there is no way to switch to
         # another tool than to reselect an object (by clicking it) because the tool buttons in the
@@ -93,7 +97,7 @@ class DirectSupportBlockersReborn(Tool):
         self._had_selection_timer = QTimer()
         self._had_selection_timer.setInterval(0)
         self._had_selection_timer.setSingleShot(True)
-        self._had_selection_timer.timeout.connect(self._selectionChangeDelay)
+        self._had_selection_timer.timeout.connect(self._selection_changed_delay)
 
         self._line_points: int = 0
         self._line_first_point: Vector = None
@@ -107,6 +111,9 @@ class DirectSupportBlockersReborn(Tool):
         self._box_width: float = 10.0
         self._box_depth: float = 10.0
         self._box_height: float = 10.0
+
+        self._cylinder_diameter: float = 10.0
+        self._cylinder_height: float = 20.0
 
         self._pyramid_top_width: float = 10.0
         self._pyramid_top_depth: float = 10.0
@@ -124,6 +131,8 @@ class DirectSupportBlockersReborn(Tool):
         self._preferences.addPreference("directsupportblockers/box_width", 10)
         self._preferences.addPreference("directsupportblockers/box_depth", 15)
         self._preferences.addPreference("directsupportblockers/box_height", 20)
+        self._preferences.addPreference("directsupportblockers/cylinder_diameter", 10)
+        self._preferences.addPreference("directsupportblockers/cylinder_height", 20)
         self._preferences.addPreference("directsupportblockers/pyramid_top_width", 10)
         self._preferences.addPreference("directsupportblockers/pyramid_top_depth", 10)
         self._preferences.addPreference("directsupportblockers/pyramid_bottom_width", 20)
@@ -138,6 +147,8 @@ class DirectSupportBlockersReborn(Tool):
         self._box_width = float(self._preferences.getValue("directsupportblockers/box_width"))
         self._box_depth = float(self._preferences.getValue("directsupportblockers/box_depth"))
         self._box_height = float(self._preferences.getValue("directsupportblockers/box_height"))
+        self._cylinder_diameter = float(self._preferences.getValue("directsupportblockers/cylinder_diameter"))
+        self._cylinder_height = float(self._preferences.getValue("directsupportblockers/cylinder_height"))
         self._pyramid_top_width = float(self._preferences.getValue("directsupportblockers/pyramid_top_width"))
         self._pyramid_top_depth = float(self._preferences.getValue("directsupportblockers/pyramid_top_depth"))
         self._pyramid_bottom_width = float(self._preferences.getValue("directsupportblockers/pyramid_bottom_width"))
@@ -174,7 +185,7 @@ class DirectSupportBlockersReborn(Tool):
             node_stack = picked_node.callDecoration("getStack")
             if node_stack:
                 if node_stack.getProperty("anti_overhang_mesh", "value"):
-                    self._removeBlocker(picked_node)
+                    self._remove_blocker(picked_node)
                     return
 
                 elif node_stack.getProperty("support_mesh", "value") or node_stack.getProperty("infill_mesh", "value") or node_stack.getProperty("cutting_mesh", "value"):
@@ -205,9 +216,9 @@ class DirectSupportBlockersReborn(Tool):
                     self._line_points = 0
                     #self._createBlocker(picked_node, self._line_first_point, self._line_second_point)
             # Add the support blocker at the picked location
-            self._createBlocker(picked_node, picked_position, self._line_first_point)
+            self._create_blocker(picked_node, picked_position, self._line_first_point)
 
-    def _createBlocker(self, parent: CuraSceneNode, position: Vector, position_start: Vector = None):
+    def _create_blocker(self, parent: CuraSceneNode, position: Vector, position_start: Vector = None):
         if self._blocker_to_plate:
             self._click_height = position.y + 0.2
         log("d", f"position: {position}, position_start: {position_start}")
@@ -221,6 +232,8 @@ class DirectSupportBlockersReborn(Tool):
         match self._blocker_type:
             case self.BLOCKER_TYPE_BOX:
                 mesh = self._create_box(self._box_width, self._box_depth, self._box_height)
+            case self.BLOCKER_TYPE_CYLINDER:
+                mesh = self._create_cylinder(self._cylinder_diameter, self._cylinder_height)
             case self.BLOCKER_TYPE_PYRAMID:
                 mesh = self._create_truncated_pyramid((self._pyramid_top_width, self._pyramid_top_depth), (self._pyramid_bottom_width, self._pyramid_bottom_depth), self._pyramid_height if not self._blocker_to_plate else self._click_height)
             case self.BLOCKER_TYPE_LINE:
@@ -314,12 +327,14 @@ class DirectSupportBlockersReborn(Tool):
         #log("d", f"node_blocker_mesh = {node_blocker_mesh}\nvertices = {node_blocker_mesh.getVertices()}")
 
     def convert_mesh_conversion_finished(self, job: Job):
+        """After conversion of a model to support blocker format has finished, make it a support blocker."""
         self.setConvertButtonText(self._convert_button_default_text)
         self.propertyChanged.emit()
         
         node = self._convert_node
         if job.hasError():
             log("e", f"ConvertMeshDataToBlocker failed: {job.getError()}")
+            
             return
 
         node.setMeshData(job.getResult())
@@ -348,7 +363,8 @@ class DirectSupportBlockersReborn(Tool):
             current_dots = 0
         self.setConvertButtonText(self._convert_button_progress_text + "." * current_dots)
 
-    def _removeBlocker(self, node: CuraSceneNode):
+    def _remove_blocker(self, node: CuraSceneNode):
+        """Remove a support blocker from the scene. Hope it's only blockers, anyway."""
         parent = node.getParent()
         if parent == self._controller.getScene().getRoot():
             parent = None
@@ -361,15 +377,6 @@ class DirectSupportBlockersReborn(Tool):
 
         CuraApplication.getInstance().getController().getScene().sceneChanged.emit(node)
 
-    def _updateEnabled(self):
-        plugin_enabled = False
-
-        global_container_stack = CuraApplication.getInstance().getGlobalContainerStack()
-        if global_container_stack:
-            plugin_enabled = global_container_stack.getProperty("anti_overhang_mesh", "enabled")
-
-        CuraApplication.getInstance().getController().toolEnabledChanged.emit(self._plugin_id, plugin_enabled)
-
     def _onSelectionChanged(self):
         # When selection is passed from one object to another object, first the selection is cleared
         # and then it is set to the new object. We are only interested in the change from no selection
@@ -378,7 +385,8 @@ class DirectSupportBlockersReborn(Tool):
         if Selection.hasSelection() != self._had_selection:
             self._had_selection_timer.start()
 
-    def _selectionChangeDelay(self):
+    def _selection_changed_delay(self):
+        """Triggers a tiny pause if a different object is selected. Apparently it's needed."""
         has_selection = Selection.hasSelection()
         if not has_selection and self._had_selection:
             self._skip_press = True
@@ -387,8 +395,8 @@ class DirectSupportBlockersReborn(Tool):
 
         self._had_selection = has_selection
 
-    def _trimesh_to_meshbuilder(self, trimesh_model: trimesh.base.Trimesh,
-            rotation_angle: float = -90, rotation_direction: list[float] | tuple[float] = (1,0,0)) -> MeshBuilder:
+    def _trimesh_to_ugly_meshbuilder(self, trimesh_model: trimesh.base.Trimesh,
+        rotation_angle: float = -90, rotation_direction: list[float] | tuple[float] = (1,0,0)) -> MeshBuilder:
         """Converts a Trimesh object to a MeshBuilder in a really ugly way so we get per-vertex normals."""
         trimesh_model.apply_transform(trimesh.transformations.rotation_matrix(math.radians(rotation_angle), rotation_direction))
 
@@ -465,7 +473,7 @@ class DirectSupportBlockersReborn(Tool):
     def _create_box(self, width: float, depth: float, height: float) -> MeshBuilder:
         if self._blocker_to_plate:
             height = self._click_height
-        return self._trimesh_to_meshbuilder(trimesh.creation.box(extents = [width, height, depth]), 0)
+        return self._trimesh_to_ugly_meshbuilder(trimesh.creation.box(extents = [width, height, depth]), 0)
 
     def _create_truncated_pyramid(self, top_dims, base_dims, height):
         """
@@ -503,7 +511,12 @@ class DirectSupportBlockersReborn(Tool):
             [0, 1, 2], [0, 2, 3]   # Bottom
         ]
 
-        return self._trimesh_to_meshbuilder(trimesh.Trimesh(vertices=vertices, faces=faces), -90)
+        return self._trimesh_to_ugly_meshbuilder(trimesh.Trimesh(vertices=vertices, faces=faces), -90)
+
+    def _create_cylinder(self, diameter: float, height: float) -> MeshBuilder:
+        if self._blocker_to_plate:
+            height = self._click_height
+        return self._trimesh_to_ugly_meshbuilder(trimesh.creation.cylinder(radius=diameter / 2, height=height, sections=90))
 
     def _create_line_mesh(self, width, pos1: Vector , pos2: Vector, extra_height, blocker_to_plate: bool, fixed_height: float):
         mesh = MeshBuilder()
@@ -607,6 +620,24 @@ class DirectSupportBlockersReborn(Tool):
         if new_value is not None:
             self._box_height = new_value
             self._preferences.setValue("directsupportblockers/box_height", self._box_height)
+
+    def getCylinderDiameter(self) -> float:
+        return self._cylinder_diameter
+
+    def setCylinderDiameter(self, value: str):
+        new_value = validate_float(value)
+        if new_value is not None:
+            self._cylinder_diameter = new_value
+            self._preferences.setValue("directsupportblockers/cylinder_diameter", self._cylinder_diameter)
+
+    def getCylinderHeight(self) -> float:
+        return self._cylinder_height
+
+    def setCylinderHeight(self, value: str):
+        new_value = validate_float(value)
+        if new_value is not None:
+            self._cylinder_height = new_value
+            self._preferences.setValue("directsupportblockers/cylinder_height", self._cylinder_height)
 
     def getPyramidTopWidth(self) -> float:
         return self._pyramid_top_width
