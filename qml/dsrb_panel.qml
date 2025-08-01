@@ -136,6 +136,40 @@ Item {
         boxHeightTextField.background.color = getBackgroundColour(box_height_valid)
     }
 
+    function validateInputsCylinder(){
+        let message = "";
+        let cylinder_diameter_valid = true;
+        let cylinder_height_valid = true;
+
+        if (!validateFloat(cylinderDiameter, 0.5)){
+            cylinder_diameter_valid = false;
+            message += catalog.i18nc("@error:cylinder_diameter_invalid", "Cylinder diameter must be at least 0.5mm.\n");
+        }
+
+        if (!blockerToPlate && !validateFloat(cylinderHeight, 0.1)){
+            cylinder_height_valid = false;
+            message += catalog.i18nc("@error:cylinder_height_invalid", "Cylinder height must be at least 0.1mm if \"Blocker to plate\" is disabled.\n");
+        }
+
+        if (cylinder_diameter_valid && (blockerToPlate || cylinder_height_valid)){
+            setProperty("CylinderDiameter", parseFloat(cylinderDiameter))
+            if (blockerToPlate){
+                setProperty("BlockerToPlate", true)
+            } else {
+                setProperty("CylinderHeight", parseFloat(cylinderHeight))
+                setProperty("BlockerToPlate", false)
+            }
+            inputsValid = true
+            setProperty("InputsValid", inputsValid)
+        } else {
+            inputsValid = false
+            setProperty("InputsValid", inputsValid)
+        }
+        errorMessage = message
+        cylinderDiameterTextField.background.color = getBackgroundColour(cylinder_diameter_valid)
+        cylinderHeightTextField.background.color = getBackgroundColour(cylinder_height_valid)
+    }
+
     function validateInputsPyramid(){
         let message = "";
         let pyramid_top_width_valid = true;
@@ -233,6 +267,7 @@ Item {
 
 
     readonly property string boxBlockerType: "box_blocker_type"
+    readonly property string cylinderBlockerType: "cylinder_blocker_type"
     readonly property string pyramidBlockerType: "pyramid_blocker_type"
     readonly property string lineBlockerType: "line_blocker_type"
     readonly property string customBlockerType: "custom_blocker_type"
@@ -246,6 +281,9 @@ Item {
     property string boxWidth: ""
     property string boxDepth: ""
     property string boxHeight: ""
+
+    property string cylinderDiameter: ""
+    property string cylinderHeight: ""
 
     property string pyramidTopWidth: ""
     property string pyramidTopDepth: ""
@@ -264,6 +302,9 @@ Item {
         boxDepth = getProperty("BoxDepth")
         boxHeight = getProperty("BoxHeight")
 
+        cylinderDiameter = getProperty("CylinderDiameter")
+        cylinderHeight = getProperty("CylinderHeight")
+
         pyramidTopWidth = getProperty("PyramidTopWidth")
         pyramidTopDepth = getProperty("PyramidTopDepth")
         pyramidBottomWidth = getProperty("PyramidBottomWidth")
@@ -279,6 +320,7 @@ Item {
             type = currentBlockerType
         }
         boxButton.checked = type === boxBlockerType
+        cylinderButton.checked = type === cylinderBlockerType
         pyramidButton.checked = type === pyramidBlockerType
         lineButton.checked = type === lineBlockerType
         customButton.checked = type === customBlockerType
@@ -293,16 +335,20 @@ Item {
                 settingsStackLayout.currentIndex = 0;
                 Qt.callLater(validateInputsBox);
                 break;
-            case pyramidBlockerType:
+            case cylinderBlockerType:
                 settingsStackLayout.currentIndex = 1;
+                Qt.callLater(validateInputsCylinder);
+                break;
+            case pyramidBlockerType:
+                settingsStackLayout.currentIndex = 2;
                 Qt.callLater(validateInputsPyramid);
                 break;
             case lineBlockerType:
-                settingsStackLayout.currentIndex = 2;
+                settingsStackLayout.currentIndex = 3;
                 Qt.callLater(validateInputsLine);
                 break;
             case customBlockerType:
-                settingsStackLayout.currentIndex = 3;
+                settingsStackLayout.currentIndex = 4;
                 break;
         }
     }
@@ -311,6 +357,9 @@ Item {
         switch(currentBlockerType){
             case boxBlockerType:
                 validateInputsBox();
+                break;
+            case cylinderBlockerType:
+                validateInputsCylinder();
                 break;
             case pyramidBlockerType:
                 validateInputsPyramid();
@@ -353,6 +402,19 @@ Item {
                 property bool needBorder: true
                 checkable: true
                 onClicked: setBlockerType(boxBlockerType)
+                z: 5
+            }
+
+            UM.ToolbarButton {
+                id: cylinderButton
+                text: catalog.i18nc("@label", "Cylindrical support blocker")
+                toolItem: UM.ColorImage {
+                    source: Qt.resolvedUrl("cylinder.svg")
+                    color: UM.Theme.getColor("icon")
+                }
+                property bool needBorder: true
+                checkable: true
+                onClicked: setBlockerType(cylinderBlockerType)
                 z: 4
             }
 
@@ -464,6 +526,53 @@ Item {
                     onTextChanged: {
                         boxHeight = text
                         Qt.callLater(validateInputsBox)
+                    }
+                    visible: blockerToPlate != true
+                }
+            }
+            GridLayout {
+                id: cylinderBlockerControls
+                columns: 2
+                
+                UM.Label{
+                    text: catalog.i18nc("@controls:cylinder_diameter", "Cylinder Diameter")
+                    Layout.minimumWidth: labelMinWidth
+                }
+                UM.TextFieldWithUnit{
+                    id: cylinderDiameterTextField
+                    Layout.minimumWidth: textFieldMinWidth
+                    height: UM.Theme.getSize("setting_control").height
+                    unit: "mm"
+                    text: cylinderDiameter
+                    validator: DoubleValidator{
+                        decimals: 1
+                        bottom: 0.5
+                        notation: DoubleValidator.StandardNotation
+                    }
+                    onTextChanged: {
+                        lineWidth = text
+                        Qt.callLater(validateInputsCylinder)
+                    }
+                }
+                UM.Label{
+                    text: catalog.i18nc("@controls:cylinder_height", "Cylinder Height")
+                    Layout.minimumWidth: labelMinWidth
+                    visible: blockerToPlate != true
+                }
+                UM.TextFieldWithUnit{
+                    id: cylinderHeightTextField
+                    Layout.minimumWidth: textFieldMinWidth
+                    height: UM.Theme.getSize("setting_control").height
+                    unit: "mm"
+                    text: cylindderHeight
+                    validator: DoubleValidator{
+                        decimals: 1
+                        bottom: 0.1
+                        notation: DoubleValidator.StandardNotation
+                    }
+                    onTextChanged: {
+                        cylinderHeight = text
+                        Qt.callLater(cylinderInputsLine)
                     }
                     visible: blockerToPlate != true
                 }

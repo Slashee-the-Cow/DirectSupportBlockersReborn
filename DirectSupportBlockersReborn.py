@@ -65,6 +65,7 @@ catalog = i18nCatalog("directsupportblockers")
 class DirectSupportBlockersReborn(Tool):
 
     BLOCKER_TYPE_BOX: str = "box_blocker_type"
+    BLOCKER_TYPE_CYLINDER: str = "cylinder_blocker_type"
     BLOCKER_TYPE_PYRAMID: str = "pyramid_blocker_type"
     BLOCKER_TYPE_LINE: str = "line_blocker_type"
     BLOCKER_TYPE_CUSTOM: str = "custom_blocker_type"
@@ -74,7 +75,7 @@ class DirectSupportBlockersReborn(Tool):
 
         self._catalog = i18nCatalog("directsupportblockers")
 
-        self.setExposedProperties("InputsValid", "BlockerType", "BlockerToPlate", "BoxWidth", "BoxDepth", "BoxHeight", "PyramidTopWidth", "PyramidTopDepth", "PyramidBottomWidth", "PyramidBottomDepth", "PyramidHeight", "LineWidth", "LineHeight", "ConvertButtonText")
+        self.setExposedProperties("InputsValid", "BlockerType", "BlockerToPlate", "BoxWidth", "BoxDepth", "BoxHeight", "CylinderDiameter", "CylinderHeight", "PyramidTopWidth", "PyramidTopDepth", "PyramidBottomWidth", "PyramidBottomDepth", "PyramidHeight", "LineWidth", "LineHeight", "ConvertButtonText")
 
         # Note: if the selection is cleared with this tool active, there is no way to switch to
         # another tool than to reselect an object (by clicking it) because the tool buttons in the
@@ -108,6 +109,9 @@ class DirectSupportBlockersReborn(Tool):
         self._box_depth: float = 10.0
         self._box_height: float = 10.0
 
+        self._cylinder_diameter: float = 10.0
+        self._cylinder_height: float = 20.0
+
         self._pyramid_top_width: float = 10.0
         self._pyramid_top_depth: float = 10.0
         self._pyramid_bottom_width: float = 20
@@ -124,6 +128,8 @@ class DirectSupportBlockersReborn(Tool):
         self._preferences.addPreference("directsupportblockers/box_width", 10)
         self._preferences.addPreference("directsupportblockers/box_depth", 15)
         self._preferences.addPreference("directsupportblockers/box_height", 20)
+        self._preferences.addPreference("directsupportblockers/cylinder_diameter", 10)
+        self._preferences.addPreference("directsupportblockers/cylinder_height", 20)
         self._preferences.addPreference("directsupportblockers/pyramid_top_width", 10)
         self._preferences.addPreference("directsupportblockers/pyramid_top_depth", 10)
         self._preferences.addPreference("directsupportblockers/pyramid_bottom_width", 20)
@@ -138,6 +144,8 @@ class DirectSupportBlockersReborn(Tool):
         self._box_width = float(self._preferences.getValue("directsupportblockers/box_width"))
         self._box_depth = float(self._preferences.getValue("directsupportblockers/box_depth"))
         self._box_height = float(self._preferences.getValue("directsupportblockers/box_height"))
+        self._cylinder_diameter = float(self._preferences.getValue("directsupportblockers/cylinder_diameter"))
+        self._cylinder_height = float(self._preferences.getValue("directsupportblockers/cylinder_height"))
         self._pyramid_top_width = float(self._preferences.getValue("directsupportblockers/pyramid_top_width"))
         self._pyramid_top_depth = float(self._preferences.getValue("directsupportblockers/pyramid_top_depth"))
         self._pyramid_bottom_width = float(self._preferences.getValue("directsupportblockers/pyramid_bottom_width"))
@@ -221,6 +229,8 @@ class DirectSupportBlockersReborn(Tool):
         match self._blocker_type:
             case self.BLOCKER_TYPE_BOX:
                 mesh = self._create_box(self._box_width, self._box_depth, self._box_height)
+            case self.BLOCKER_TYPE_CYLINDER:
+                mesh = self._create_cylinder(self._cylinder_diameter, self._cylinder_height)
             case self.BLOCKER_TYPE_PYRAMID:
                 mesh = self._create_truncated_pyramid((self._pyramid_top_width, self._pyramid_top_depth), (self._pyramid_bottom_width, self._pyramid_bottom_depth), self._pyramid_height if not self._blocker_to_plate else self._click_height)
             case self.BLOCKER_TYPE_LINE:
@@ -387,8 +397,8 @@ class DirectSupportBlockersReborn(Tool):
 
         self._had_selection = has_selection
 
-    def _trimesh_to_meshbuilder(self, trimesh_model: trimesh.base.Trimesh,
-            rotation_angle: float = -90, rotation_direction: list[float] | tuple[float] = (1,0,0)) -> MeshBuilder:
+    def _trimesh_to_ugly_meshbuilder(self, trimesh_model: trimesh.base.Trimesh,
+        rotation_angle: float = -90, rotation_direction: list[float] | tuple[float] = (1,0,0)) -> MeshBuilder:
         """Converts a Trimesh object to a MeshBuilder in a really ugly way so we get per-vertex normals."""
         trimesh_model.apply_transform(trimesh.transformations.rotation_matrix(math.radians(rotation_angle), rotation_direction))
 
@@ -465,7 +475,7 @@ class DirectSupportBlockersReborn(Tool):
     def _create_box(self, width: float, depth: float, height: float) -> MeshBuilder:
         if self._blocker_to_plate:
             height = self._click_height
-        return self._trimesh_to_meshbuilder(trimesh.creation.box(extents = [width, height, depth]), 0)
+        return self._trimesh_to_ugly_meshbuilder(trimesh.creation.box(extents = [width, height, depth]), 0)
 
     def _create_truncated_pyramid(self, top_dims, base_dims, height):
         """
@@ -503,7 +513,12 @@ class DirectSupportBlockersReborn(Tool):
             [0, 1, 2], [0, 2, 3]   # Bottom
         ]
 
-        return self._trimesh_to_meshbuilder(trimesh.Trimesh(vertices=vertices, faces=faces), -90)
+        return self._trimesh_to_ugly_meshbuilder(trimesh.Trimesh(vertices=vertices, faces=faces), -90)
+
+    def _create_cylinder(self, diameter: float, height: float) -> MeshBuilder:
+        if self._blocker_to_plate:
+            height = self._click_height
+        return self._trimesh_to_ugly_meshbuilder(trimesh.creation.cylinder(radius=diameter / 2, height=height, sections=90))
 
     def _create_line_mesh(self, width, pos1: Vector , pos2: Vector, extra_height, blocker_to_plate: bool, fixed_height: float):
         mesh = MeshBuilder()
@@ -607,6 +622,24 @@ class DirectSupportBlockersReborn(Tool):
         if new_value is not None:
             self._box_height = new_value
             self._preferences.setValue("directsupportblockers/box_height", self._box_height)
+
+    def getCylinderDiameter(self) -> float:
+        return self._cylinder_diameter
+
+    def setCylinderDiameter(self, value: str):
+        new_value = validate_float(value)
+        if new_value is not None:
+            self._cylinder_diameter = new_value
+            self._preferences.setValue("directsupportblockers/cylinder_diameter", self._cylinder_diameter)
+
+    def getCylinderHeight(self) -> float:
+        return self._cylinder_height
+
+    def setCylinderHeight(self, value: str):
+        new_value = validate_float(value)
+        if new_value is not None:
+            self._cylinder_height = new_value
+            self._preferences.setValue("directsupportblockers/cylinder_height", self._cylinder_height)
 
     def getPyramidTopWidth(self) -> float:
         return self._pyramid_top_width
