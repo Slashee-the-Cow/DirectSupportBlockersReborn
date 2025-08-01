@@ -5,16 +5,19 @@ Intended as a updated replacement for [Custom Support Eraser Plus](https://githu
 
 ## Features
 
-### ~~Three~~ **Infinite** kinds of shapes to make support blockers out of!
+### ~~Three~~ ~~Four~~ **Infinite** kinds of shapes to make support blockers out of!
 
 #### **Box**
-Prety much what it sounds like. Set the width, depth and height and click your object to create one, then move it where it's needed.  
+Pretty much what it sounds like. Set the width, depth and height and click your object to create one, then move it where it's needed.  
 (Technically it's called a cuboid, but that doesn't really roll off the tongue.)
+
+#### **Cylinder**
+Also pretty much what it sounds like! Just pick your diameter and height (or set it to go to the plate), click your object, and you have a cylinder to move into position!
 
 #### **Square/Rectangular Pyramid**
 Define sizes for the top and bottom (it can go from small to big or from big to small) and height.
 - Normal supports will only avoid the part of the pyramid which intersects your model.
-- Tree supports will avoid the whole pyramid. This is great to prevent them from growing in awkward places.
+- Tree supports will avoid the whole pyramid. This is great to prevent them from growing in awkward places.  
 
 #### **Line**
 Click two points on your model and it will draw a line of support blocker between them. Great if you're going to need access to the inner parts of something, or have a slight lip clean of supports.  
@@ -22,7 +25,7 @@ Click two points on your model and it will draw a line of support blocker betwee
 #### 🎆 **Custom** 🎆
 **Turn any model you have in Cura into a support blocker!** Works super if you need thing really specific. (Which is sort of the point.) One thing I've done is if I have a model which is partially hollow, make a solid version of that and prevent any support generating inside.
 - **Remember you'll need to move your custom blocker to intersect with the surface of the model that needs blocking.**
-- This changes the model geometry in a way that might result in it not slicing as well if you turn it back into a regular model. If you think you might do that, please make a copy of your original.
+- This changes the model geometry in a way that might result in it not slicing as well if you turn it back into a regular model. If you think you might do that, please make a copy of your original.  
 
 All built in support types support being a fixed height or going down to the build plate.
 
@@ -37,6 +40,8 @@ Having any problems? Want to request a feature? Hear a good joke? Come say hi at
 This can by minimised by lowering the *Support Join Distance* and *Support Horizontal Expansion* settings.
 ---
 ### Version History
+#### 1.0.2
+- Cylinder support blockers have been added due to overwhelming community demand.
 #### 1.0.1
 - Converting an object to a custom blocker no longer makes the Cura UI unresponsive.
 #### 1.0.0

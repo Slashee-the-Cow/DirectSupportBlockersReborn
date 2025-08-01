@@ -13,6 +13,9 @@
 # It's a branding thing. People expect "Reborn" from my 5axes continuations/replacements.
 # I would have called it "Custom Support Blockers Reborn" but that could get confused with "Custom Supports Reborn".
 #--------------------------------------------------------------------------------------------------
+# v1.0.2:
+#   - Cylindrical support blockers added. I didn't know who needed them. Apparent edolis!
+#   - Minor refactoring work. Would have been more major, but I got distracted fixing my copy + paste stuffups to get cylinders working.
 # v1.0.1:
 #   - Converting a regular mesh to a blocker now uses a Job so it doesn't lock the UI thread. Apparently it's bad when it does that. Not sure why. My "worst case scenario" test only took seven minutes to convert.
 # v1.0.0:
@@ -94,7 +97,7 @@ class DirectSupportBlockersReborn(Tool):
         self._had_selection_timer = QTimer()
         self._had_selection_timer.setInterval(0)
         self._had_selection_timer.setSingleShot(True)
-        self._had_selection_timer.timeout.connect(self._selectionChangeDelay)
+        self._had_selection_timer.timeout.connect(self._selection_changed_delay)
 
         self._line_points: int = 0
         self._line_first_point: Vector = None
@@ -182,7 +185,7 @@ class DirectSupportBlockersReborn(Tool):
             node_stack = picked_node.callDecoration("getStack")
             if node_stack:
                 if node_stack.getProperty("anti_overhang_mesh", "value"):
-                    self._removeBlocker(picked_node)
+                    self._remove_blocker(picked_node)
                     return
 
                 elif node_stack.getProperty("support_mesh", "value") or node_stack.getProperty("infill_mesh", "value") or node_stack.getProperty("cutting_mesh", "value"):
@@ -213,9 +216,9 @@ class DirectSupportBlockersReborn(Tool):
                     self._line_points = 0
                     #self._createBlocker(picked_node, self._line_first_point, self._line_second_point)
             # Add the support blocker at the picked location
-            self._createBlocker(picked_node, picked_position, self._line_first_point)
+            self._create_blocker(picked_node, picked_position, self._line_first_point)
 
-    def _createBlocker(self, parent: CuraSceneNode, position: Vector, position_start: Vector = None):
+    def _create_blocker(self, parent: CuraSceneNode, position: Vector, position_start: Vector = None):
         if self._blocker_to_plate:
             self._click_height = position.y + 0.2
         log("d", f"position: {position}, position_start: {position_start}")
@@ -324,12 +327,14 @@ class DirectSupportBlockersReborn(Tool):
         #log("d", f"node_blocker_mesh = {node_blocker_mesh}\nvertices = {node_blocker_mesh.getVertices()}")
 
     def convert_mesh_conversion_finished(self, job: Job):
+        """After conversion of a model to support blocker format has finished, make it a support blocker."""
         self.setConvertButtonText(self._convert_button_default_text)
         self.propertyChanged.emit()
         
         node = self._convert_node
         if job.hasError():
             log("e", f"ConvertMeshDataToBlocker failed: {job.getError()}")
+            
             return
 
         node.setMeshData(job.getResult())
@@ -358,7 +363,8 @@ class DirectSupportBlockersReborn(Tool):
             current_dots = 0
         self.setConvertButtonText(self._convert_button_progress_text + "." * current_dots)
 
-    def _removeBlocker(self, node: CuraSceneNode):
+    def _remove_blocker(self, node: CuraSceneNode):
+        """Remove a support blocker from the scene. Hope it's only blockers, anyway."""
         parent = node.getParent()
         if parent == self._controller.getScene().getRoot():
             parent = None
@@ -371,15 +377,6 @@ class DirectSupportBlockersReborn(Tool):
 
         CuraApplication.getInstance().getController().getScene().sceneChanged.emit(node)
 
-    def _updateEnabled(self):
-        plugin_enabled = False
-
-        global_container_stack = CuraApplication.getInstance().getGlobalContainerStack()
-        if global_container_stack:
-            plugin_enabled = global_container_stack.getProperty("anti_overhang_mesh", "enabled")
-
-        CuraApplication.getInstance().getController().toolEnabledChanged.emit(self._plugin_id, plugin_enabled)
-
     def _onSelectionChanged(self):
         # When selection is passed from one object to another object, first the selection is cleared
         # and then it is set to the new object. We are only interested in the change from no selection
@@ -388,7 +385,8 @@ class DirectSupportBlockersReborn(Tool):
         if Selection.hasSelection() != self._had_selection:
             self._had_selection_timer.start()
 
-    def _selectionChangeDelay(self):
+    def _selection_changed_delay(self):
+        """Triggers a tiny pause if a different object is selected. Apparently it's needed."""
         has_selection = Selection.hasSelection()
         if not has_selection and self._had_selection:
             self._skip_press = True

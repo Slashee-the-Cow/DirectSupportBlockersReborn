@@ -388,73 +388,79 @@ Item {
             text: "I'm an interface!"
         }*/
 
-        Row { // Different blocker types
+        Column { // Different blocker types
             id: blockerTypeButtons
-            spacing: UM.Theme.getSize("default_margin").width/2
-
-            UM.ToolbarButton {
-                id: boxButton
-                text: catalog.i18nc("@label", "Box support blocker")
-                toolItem: UM.ColorImage {
-                    source: Qt.resolvedUrl("box.svg")
-                    color: UM.Theme.getColor("icon")
+            width: childrenRect.width
+            spacing: UM.Theme.getSize("default_margin").height/2
+            Row {
+                spacing: UM.Theme.getSize("default_margin").width/2
+                UM.ToolbarButton {
+                    id: boxButton
+                    text: catalog.i18nc("@label", "Box support blocker")
+                    toolItem: UM.ColorImage {
+                        source: Qt.resolvedUrl("box.svg")
+                        color: UM.Theme.getColor("icon")
+                    }
+                    property bool needBorder: true
+                    checkable: true
+                    onClicked: setBlockerType(boxBlockerType)
+                    z: 3
                 }
-                property bool needBorder: true
-                checkable: true
-                onClicked: setBlockerType(boxBlockerType)
-                z: 5
+
+                UM.ToolbarButton {
+                    id: cylinderButton
+                    text: catalog.i18nc("@label", "Cylindrical support blocker")
+                    toolItem: UM.ColorImage {
+                        source: Qt.resolvedUrl("cylinder.svg")
+                        color: UM.Theme.getColor("icon")
+                    }
+                    property bool needBorder: true
+                    checkable: true
+                    onClicked: setBlockerType(cylinderBlockerType)
+                    z: 2
+                }
+
+                UM.ToolbarButton {
+                    id: pyramidButton
+                    text: catalog.i18nc("@label", "Square / rectangular pyramid support blocker")
+                    toolItem: UM.ColorImage {
+                        source: Qt.resolvedUrl("truncated_square_pyramid.svg")
+                        color: UM.Theme.getColor("icon")
+                    }
+                    property bool needBorder: true
+                    checkable: true
+                    onClicked: setBlockerType(pyramidBlockerType)
+                    z: 1
+                }
             }
-
-            UM.ToolbarButton {
-                id: cylinderButton
-                text: catalog.i18nc("@label", "Cylindrical support blocker")
-                toolItem: UM.ColorImage {
-                    source: Qt.resolvedUrl("cylinder.svg")
-                    color: UM.Theme.getColor("icon")
+            Row{
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: UM.Theme.getSize("default_margin").width/2
+                UM.ToolbarButton {
+                    id: lineButton
+                    text: catalog.i18nc("@label", "Line support blocker")
+                    toolItem: UM.ColorImage {
+                        source: Qt.resolvedUrl("line.svg")
+                        color: UM.Theme.getColor("icon")
+                    }
+                    property bool needBorder: true
+                    checkable: true
+                    onClicked: setBlockerType(lineBlockerType)
+                    z: 2
                 }
-                property bool needBorder: true
-                checkable: true
-                onClicked: setBlockerType(cylinderBlockerType)
-                z: 4
-            }
 
-            UM.ToolbarButton {
-                id: pyramidButton
-                text: catalog.i18nc("@label", "Square / rectangular pyramid support blocker")
-                toolItem: UM.ColorImage {
-                    source: Qt.resolvedUrl("truncated_square_pyramid.svg")
-                    color: UM.Theme.getColor("icon")
+                UM.ToolbarButton {
+                    id: customButton
+                    text: catalog.i18nc("@label", "Custom support blocker")
+                    toolItem: UM.ColorImage {
+                        source: Qt.resolvedUrl("custom.svg")
+                        color: UM.Theme.getColor("icon")
+                    }
+                    property bool needBorder: true
+                    checkable: true
+                    onClicked: setBlockerType(customBlockerType)
+                    z: 1
                 }
-                property bool needBorder: true
-                checkable: true
-                onClicked: setBlockerType(pyramidBlockerType)
-                z: 3
-            }
-
-            UM.ToolbarButton {
-                id: lineButton
-                text: catalog.i18nc("@label", "Line support blocker")
-                toolItem: UM.ColorImage {
-                    source: Qt.resolvedUrl("line.svg")
-                    color: UM.Theme.getColor("icon")
-                }
-                property bool needBorder: true
-                checkable: true
-                onClicked: setBlockerType(lineBlockerType)
-                z: 2
-            }
-
-            UM.ToolbarButton {
-                id: customButton
-                text: catalog.i18nc("@label", "Custom support blocker")
-                toolItem: UM.ColorImage {
-                    source: Qt.resolvedUrl("custom.svg")
-                    color: UM.Theme.getColor("icon")
-                }
-                property bool needBorder: true
-                checkable: true
-                onClicked: setBlockerType(customBlockerType)
-                z: 1
             }
         }
 
@@ -550,7 +556,7 @@ Item {
                         notation: DoubleValidator.StandardNotation
                     }
                     onTextChanged: {
-                        lineWidth = text
+                        cylinderDiameter = text
                         Qt.callLater(validateInputsCylinder)
                     }
                 }
@@ -564,7 +570,7 @@ Item {
                     Layout.minimumWidth: textFieldMinWidth
                     height: UM.Theme.getSize("setting_control").height
                     unit: "mm"
-                    text: cylindderHeight
+                    text: cylinderHeight
                     validator: DoubleValidator{
                         decimals: 1
                         bottom: 0.1
@@ -572,7 +578,7 @@ Item {
                     }
                     onTextChanged: {
                         cylinderHeight = text
-                        Qt.callLater(cylinderInputsLine)
+                        Qt.callLater(validateInputsCylinder)
                     }
                     visible: blockerToPlate != true
                 }
